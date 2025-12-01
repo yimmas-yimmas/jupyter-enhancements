@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Run Extension",
+      "type": "extensionHost",
+      "request": "launch",
+      "args": [
+        "--extensionDevelopmentPath=${workspaceFolder}",
+        "--userDataDir=${workspaceFolder}/.vscode/test-user-data",
+        "${workspaceFolder}/test.ipynb",
+
+        // ←←← ADD THESE TWO LINES
+        "--python-interpreter", "T:\\PYTHON\\envs\\jlab\\python.exe",
+      ],
+      "outFiles": [
+        "${workspaceFolder}/out/**/*.js"
+      ],
+      "preLaunchTask": "npm: compile"
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "name": "run-current-and-below",
+  "displayName": "Run Current & Below",
+  "description": "Run cells with 4 configurable visual options",
+  "version": "1.3.2",
+  "publisher": "yimmas",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Notebooks"
+  ],
+"activationEvents": [
+    "onNotebookEditor:jupyter-notebook",
+    "onCommand:notebook.cell.executeCellAndBelow"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "run-current-and-below.execute",
+        "title": "Run Current & Below",
+        "icon": "$(run-below)"
+      }
+    ],
+    "menus": {
+      "notebook/cell/title": [
+        {
+          "command": "run-current-and-below.execute",
+          "group": "inline/run",
+          "when": "notebookType == jupyter-notebook"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "run-current-and-below.execute",
+          "group": "navigation/execute",
+          "when": "notebookType == jupyter-notebook"
+        }
+      ],
+      "notebook/cell/context": [
+        {
+          "command": "run-current-and-below.execute",
+          "group": "1_execution",
+          "when": "notebookType == jupyter-notebook"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Run Current & Below",
+      "properties": {
+        "runCurrentBelow.option1.enablePersistentBackground": {
+          "type": "boolean",
+          "default": true,
+          "description": "Option 1: Enable Green/Red background colors after execution."
+        },
+        "runCurrentBelow.option2.enableFlashEffect": {
+          "type": "boolean",
+          "default": true,
+          "description": "Option 2: Enable a brief background flash upon success."
+        },
+        "runCurrentBelow.option3.enableCommandBorder": {
+          "type": "boolean",
+          "default": true,
+          "description": "Option 3: Enable flashing border around the command text while running."
+        },
+        "runCurrentBelow.option3.persistOnSuccess": {
+          "type": "boolean",
+          "default": false,
+          "description": "Option 3: Keep the command border (Dark Green) after success."
+        },
+        "runCurrentBelow.option4.enableCellBorder": {
+          "type": "boolean",
+          "default": true,
+          "description": "Option 4: Enable flashing Left-Side Cell Border while running."
+        },
+        "runCurrentBelow.option4.persistOnSuccess": {
+          "type": "boolean",
+          "default": true,
+          "description": "Option 4: Keep the Left-Side Cell Border (Dark Green) after success."
+        },
+        "runCurrentBelow.colors.successBackground": {
+          "type": "string",
+          "default": "rgba(0, 255, 0, 0.2)",
+          "description": "Color for Option 1 (Success Background)."
+        },
+        "runCurrentBelow.colors.errorBackground": {
+          "type": "string",
+          "default": "rgba(255, 0, 0, 0.2)",
+          "description": "Color for Option 1 (Error Background)."
+        },
+        "runCurrentBelow.colors.flash": {
+          "type": "string",
+          "default": "rgba(255, 255, 0, 0.4)",
+          "description": "Color for Option 2 (Flash)."
+        },
+        "runCurrentBelow.colors.commandBorderRunning": {
+          "type": "string",
+          "default": "rgba(0, 120, 255, 1.0)",
+          "description": "Color for Option 3 Running (Command Border)."
+        },
+        "runCurrentBelow.colors.commandBorderSuccess": {
+          "type": "string",
+          "default": "rgba(0, 100, 0, 1.0)",
+          "description": "Color for Option 3 Success (Command Border)."
+        },
+        "runCurrentBelow.colors.cellBorderRunning": {
+          "type": "string",
+          "default": "rgba(0, 120, 255, 1.0)",
+          "description": "Color for Option 4 Running (Left Cell Border)."
+        },
+        "runCurrentBelow.colors.cellBorderSuccess": {
+          "type": "string",
+          "default": "rgba(0, 100, 0, 1.0)",
+          "description": "Color for Option 4 Success (Left Cell Border)."
+        },
+        "runCurrentBelow.flashDuration": {
+          "type": "number",
+          "default": 300,
+          "description": "Duration of the flash effect in milliseconds."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "pretest": "npm run compile",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.96.0",
+    "@types/node": "20.x",
+    "typescript": "^5.4.0",
+    "@vscode/test-cli": "^0.0.6",
+    "@vscode/test-electron": "^2.4.0"
+  }
+}

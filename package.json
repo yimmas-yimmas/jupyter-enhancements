@@ -1,0 +1,212 @@
+{
+  "name": "jupyter-enhancements",
+  "displayName": "Jupyter Enhancements",
+  "description": "Supercharge Jupyter Notebooks with visual cues (Flash, Backgrounds, Borders) and smart execution controls.",
+  "version": "1.12.0",
+  "publisher": "yimmas",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "categories": [
+    "Notebooks"
+  ],
+  "activationEvents": [
+    "onNotebookEditor:jupyter-notebook",
+    "onCommand:notebook.cell.executeCellAndBelow",
+    "onCommand:notebook.cell.executeCellsAbove",
+    "onCommand:notebook.cell.execute",
+    "onCommand:notebook.execute",
+    "onCommand:jupyter.runCellAndAllBelow",
+    "onCommand:jupyter.runPrecedentCells",
+    "onCommand:jupyter.runDependentCells"
+      ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "jupyter-enhancements.execute",
+        "title": "Run Current & Below",
+        "icon": "$(run-below)"
+      },
+      {
+        "command": "jupyter-enhancements.runInScratchpad",
+        "title": "Run Selection in Scratchpad",
+        "icon": "$(add)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "jupyter-enhancements.runInScratchpad",
+        "key": "f11",
+        "when": "editorTextFocus && notebookEditorFocused"
+      }
+    ],
+    "menus": {
+      "notebook/cell/title": [
+        {
+          "command": "jupyter-enhancements.execute",
+          "group": "inline/run",
+          "when": "notebookType == jupyter-notebook"
+        }
+      ],
+      "notebook/toolbar": [
+        {
+          "command": "jupyter-enhancements.execute",
+          "group": "navigation/execute",
+          "when": "notebookType == jupyter-notebook"
+        }
+      ],
+      "notebook/cell/context": [
+        {
+          "command": "jupyter-enhancements.execute",
+          "group": "1_execution",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.runInScratchpad",
+          "group": "1_execution",
+          "when": "notebookType == jupyter-notebook"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "jupyter-enhancements.runInScratchpad",
+          "group": "navigation",
+          "when": "notebookEditorFocused"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Jupyter Enhancements",
+      "properties": {
+        "jupyterEnhancements.layout.enableCompactView": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enables a tight layout: Verbose timing, Line numbers ON, Small output font, Consolidated Run Button, etc."
+        },
+        "jupyterEnhancements.layout.hideCellToolbar": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hides the floating cell toolbar (Run/Delete/etc) when enabled. Shows it on the right when disabled."
+        },
+        "jupyterEnhancements.general.flashDuration": {
+          "type": "number",
+          "default": 300,
+          "description": "Duration of the flash effect in milliseconds."
+        },
+        "jupyterEnhancements.background.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable persistent background colors (Green/Red) after execution."
+        },
+        "jupyterEnhancements.background.successColor": {
+          "type": "string",
+          "default": "rgba(144, 238, 144, 0.2)",
+          "description": "Background color for successfully executed cells."
+        },
+        "jupyterEnhancements.background.errorColor": {
+          "type": "string",
+          "default": "rgba(255, 0, 0, 0.2)",
+          "description": "Background color for failed cells."
+        },
+        "jupyterEnhancements.flash.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable a brief flash effect upon successful execution."
+        },
+        "jupyterEnhancements.flash.color": {
+          "type": "string",
+          "default": "rgba(255, 255, 0, 0.4)",
+          "description": "Color of the flash effect."
+        },
+        "jupyterEnhancements.innerBorder.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable a border around the code text (Command Box) while running."
+        },
+        "jupyterEnhancements.innerBorder.persist": {
+          "type": "boolean",
+          "default": false,
+          "description": "Keep the inner border (Dark Green) visible after success."
+        },
+        "jupyterEnhancements.innerBorder.runningColor": {
+          "type": "string",
+          "default": "rgba(0, 120, 255, 1.0)",
+          "description": "Color of the inner border while running (Blue)."
+        },
+        "jupyterEnhancements.innerBorder.successColor": {
+          "type": "string",
+          "default": "rgba(0, 100, 0, 1.0)",
+          "description": "Color of the inner border after success."
+        },
+        "jupyterEnhancements.outerBorder.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable a thick indicator bar on the left side of the cell while running."
+        },
+        "jupyterEnhancements.outerBorder.persist": {
+          "type": "boolean",
+          "default": true,
+          "description": "Keep the outer indicator (Dark Green) visible after success."
+        },
+        "jupyterEnhancements.outerBorder.runningColor": {
+          "type": "string",
+          "default": "rgba(0, 120, 255, 1.0)",
+          "description": "Color of the outer indicator while running (Blue)."
+        },
+        "jupyterEnhancements.outerBorder.successColor": {
+          "type": "string",
+          "default": "rgba(0, 100, 0, 1.0)",
+          "description": "Color of the outer indicator after success."
+        },
+        "jupyterEnhancements.scratchpad.borderColor": {
+          "type": "string",
+          "default": "rgba(128, 128, 128, 0.5)",
+          "description": "Border color for Scratchpad cells. (Default: F11. To change, press Ctrl+K Ctrl+S and search for 'jupyter-enhancements.runInScratchpad')"
+        },
+        "jupyterEnhancements.scratchpad.borderStyle": {
+          "type": "string",
+          "default": "dashed",
+          "enum": [
+            "solid",
+            "dashed",
+            "dotted",
+            "double",
+            "groove"
+          ],
+          "description": "Border style for Scratchpad cells. (Default: F11. To change, press Ctrl+K Ctrl+S and search for 'jupyter-enhancements.runInScratchpad')"
+        },
+        "jupyterEnhancements.scratchpad.borderWidth": {
+          "type": "string",
+          "default": "2px",
+          "description": "Border width for Scratchpad cells. (Default: F11. To change, press Ctrl+K Ctrl+S and search for 'jupyter-enhancements.runInScratchpad')"
+        },
+        "jupyterEnhancements.scratchpad.backgroundColor": {
+          "type": "string",
+          "default": "rgba(255, 255, 255, 0.05)",
+          "description": "Optional background color for Scratchpad cells."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -w -p ./",
+    "pretest": "npm run compile",
+    "test": "vscode-test"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.96.0",
+    "@types/node": "20.x",
+    "typescript": "^5.4.0",
+    "@vscode/test-cli": "^0.0.6",
+    "@vscode/test-electron": "^2.4.0"
+  },
+
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yimmas-yimmas/jupyter-enhancements.git"
+  }
+
+}
