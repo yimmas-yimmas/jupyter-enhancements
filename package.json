@@ -2,15 +2,17 @@
   "name": "jupyter-enhancements",
   "displayName": "Jupyter Enhancements",
   "description": "Supercharge Jupyter Notebooks with visual cues (Flash, Backgrounds, Borders) and smart execution controls.",
-  "version": "1.12.0",
+  "version": "1.16.1",
   "publisher": "yimmas",
+  "icon": "icon.png",
   "engines": {
     "vscode": "^1.96.0"
   },
   "categories": [
     "Notebooks"
   ],
-  "activationEvents": [
+"activationEvents": [
+    "onStartupFinished",
     "onNotebookEditor:jupyter-notebook",
     "onCommand:notebook.cell.executeCellAndBelow",
     "onCommand:notebook.cell.executeCellsAbove",
@@ -19,7 +21,7 @@
     "onCommand:jupyter.runCellAndAllBelow",
     "onCommand:jupyter.runPrecedentCells",
     "onCommand:jupyter.runDependentCells"
-      ],
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "commands": [
@@ -84,6 +86,20 @@
           "default": false,
           "description": "Enables a tight layout: Verbose timing, Line numbers ON, Small output font, Consolidated Run Button, etc."
         },
+
+        "jupyterEnhancements.kernel.optimizeStartup": {
+  "type": "boolean",
+  "default": true,
+  "description": "Disables 'python.terminal.activateEnvironment' to significantly speed up startup when using Conda on Windows. (Default: True)"
+},
+
+ "jupyterEnhancements.kernel.pythonPath": {
+        "type": "string",
+        "default": "t:/PYTHON/envs/jlab/python.exe",
+        "description": "Absolute path to the Python executable (e.g. C:/Anaconda3/python.exe). Forces this kernel on startup."
+      },
+
+
         "jupyterEnhancements.layout.hideCellToolbar": {
           "type": "boolean",
           "default": false,
@@ -101,12 +117,14 @@
         },
         "jupyterEnhancements.background.successColor": {
           "type": "string",
-          "default": "rgba(144, 238, 144, 0.2)",
+          "format": "color-hex",
+          "default": "#90EE9033",
           "description": "Background color for successfully executed cells."
         },
         "jupyterEnhancements.background.errorColor": {
           "type": "string",
-          "default": "rgba(255, 0, 0, 0.2)",
+          "format": "color-hex",
+          "default": "#FF000033",
           "description": "Background color for failed cells."
         },
         "jupyterEnhancements.flash.enable": {
@@ -116,7 +134,8 @@
         },
         "jupyterEnhancements.flash.color": {
           "type": "string",
-          "default": "rgba(255, 255, 0, 0.4)",
+          "format": "color-hex",
+          "default": "#FFFF0066",
           "description": "Color of the flash effect."
         },
         "jupyterEnhancements.innerBorder.enable": {
@@ -131,12 +150,14 @@
         },
         "jupyterEnhancements.innerBorder.runningColor": {
           "type": "string",
-          "default": "rgba(0, 120, 255, 1.0)",
+          "format": "color-hex",
+          "default": "#0078FF",
           "description": "Color of the inner border while running (Blue)."
         },
         "jupyterEnhancements.innerBorder.successColor": {
           "type": "string",
-          "default": "rgba(0, 100, 0, 1.0)",
+          "format": "color-hex",
+          "default": "#006400",
           "description": "Color of the inner border after success."
         },
         "jupyterEnhancements.outerBorder.enable": {
@@ -144,6 +165,25 @@
           "default": true,
           "description": "Enable a thick indicator bar on the left side of the cell while running."
         },
+		
+		"jupyterEnhancements.outerBorder.position": {
+  "type": "string",
+  "default": "left",
+  "enum": [
+    "left",
+    "right",
+    "top",
+    "bottom"
+  ],
+  "description": "Side where the thick indicator bar appears."
+},
+
+"jupyterEnhancements.outerBorder.thickness": {
+  "type": "string",
+  "default": "10px",
+  "description": "Thickness of the outer indicator bar (e.g., '2px', '8px', '12px')."
+},
+
         "jupyterEnhancements.outerBorder.persist": {
           "type": "boolean",
           "default": true,
@@ -151,18 +191,21 @@
         },
         "jupyterEnhancements.outerBorder.runningColor": {
           "type": "string",
-          "default": "rgba(0, 120, 255, 1.0)",
+          "format": "color-hex",
+          "default": "#0078FF",
           "description": "Color of the outer indicator while running (Blue)."
         },
         "jupyterEnhancements.outerBorder.successColor": {
           "type": "string",
-          "default": "rgba(0, 100, 0, 1.0)",
+          "format": "color-hex",
+          "default": "#006400",
           "description": "Color of the outer indicator after success."
         },
         "jupyterEnhancements.scratchpad.borderColor": {
           "type": "string",
-          "default": "rgba(128, 128, 128, 0.5)",
-          "description": "Border color for Scratchpad cells. (Default: F11. To change, press Ctrl+K Ctrl+S and search for 'jupyter-enhancements.runInScratchpad')"
+          "format": "color-hex",
+          "default": "#80808080",
+          "description": "Border color for Scratchpad cells. (Default: F11)"
         },
         "jupyterEnhancements.scratchpad.borderStyle": {
           "type": "string",
@@ -174,16 +217,17 @@
             "double",
             "groove"
           ],
-          "description": "Border style for Scratchpad cells. (Default: F11. To change, press Ctrl+K Ctrl+S and search for 'jupyter-enhancements.runInScratchpad')"
+          "description": "Border style for Scratchpad cells."
         },
         "jupyterEnhancements.scratchpad.borderWidth": {
           "type": "string",
           "default": "2px",
-          "description": "Border width for Scratchpad cells. (Default: F11. To change, press Ctrl+K Ctrl+S and search for 'jupyter-enhancements.runInScratchpad')"
+          "description": "Border width for Scratchpad cells."
         },
         "jupyterEnhancements.scratchpad.backgroundColor": {
           "type": "string",
-          "default": "rgba(255, 255, 255, 0.05)",
+          "format": "color-hex",
+          "default": "#FFFFFF0D",
           "description": "Optional background color for Scratchpad cells."
         }
       }
@@ -203,10 +247,8 @@
     "@vscode/test-cli": "^0.0.6",
     "@vscode/test-electron": "^2.4.0"
   },
-
   "repository": {
     "type": "git",
     "url": "https://github.com/yimmas-yimmas/jupyter-enhancements.git"
   }
-
 }

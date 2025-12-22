@@ -45,9 +45,13 @@ export function activate(context: vscode.ExtensionContext) {
         }
     }));
 
-    // 2. Scroll Listener
+    // 2. Scroll Listener (Debounced)
+    let scrollTimeout: NodeJS.Timeout | undefined;
     context.subscriptions.push(vscode.window.onDidChangeVisibleTextEditors(editors => {
-        for (const editor of editors) restoreDecorationForEditor(editor);
+        if (scrollTimeout) clearTimeout(scrollTimeout);
+        scrollTimeout = setTimeout(() => {
+            for (const editor of editors) restoreDecorationForEditor(editor);
+        }, 100); // Wait 100ms for the user to stop dragging/scrolling
     }));
 
     // 3. Poller
@@ -95,11 +99,7 @@ function updateLayoutSettings() {
     const config = vscode.workspace.getConfiguration('jupyterEnhancements');
     const vscodeConfig = vscode.workspace.getConfiguration();
 
-    // 1. Compact View Toggle
     const enableCompact = config.get<boolean>('layout.enableCompactView', false);
-    
-    // We only update if the setting is specifically requested to avoid overriding user preference aggressively
-    // But since this is a "Toggle", we enforce state.
     
     const compactSettings = {
         "notebook.cellExecutionTimeVerbosity": "verbose",
@@ -113,7 +113,6 @@ function updateLayoutSettings() {
     };
 
     if (enableCompact) {
-        // Apply Compact Settings
         for (const [key, value] of Object.entries(compactSettings)) {
             if (vscodeConfig.get(key) !== value) {
                 vscodeConfig.update(key, value, vscode.ConfigurationTarget.Global);
@@ -121,32 +120,23 @@ function updateLayoutSettings() {
             }
         }
     } else {
-        // Optional: Revert to default (undefined) if we want to be nice when untoggled
-        // We check if it matches our 'compact' value, if so, reset it.
-        // This prevents resetting a user's *other* custom value.
         for (const [key, value] of Object.entries(compactSettings)) {
             if (vscodeConfig.get(key) === value) {
-                // If it looks like we set it, unset it (revert to default)
                 vscodeConfig.update(key, undefined, vscode.ConfigurationTarget.Global);
             }
         }
     }
 
-    // 2. Hide Cell Toolbar Toggle
     const hideToolbar = config.get<boolean>('layout.hideCellToolbar', false);
     const toolbarKey = "notebook.cellToolbarLocation";
     const currentToolbar = vscodeConfig.get(toolbarKey);
 
     if (hideToolbar) {
-        // Target: { "default": "hidden" }
-        // We compare broadly to avoid constant writing
         if (JSON.stringify(currentToolbar) !== JSON.stringify({ "default": "hidden" })) {
             vscodeConfig.update(toolbarKey, { "default": "hidden" }, vscode.ConfigurationTarget.Global);
             output.appendLine(`[Layout] Cell Toolbar Hidden`);
         }
     } else {
-        // Target: "right" (Default) or { "default": "right" }
-        // If it is currently hidden, restore to right.
         if (JSON.stringify(currentToolbar) === JSON.stringify({ "default": "hidden" })) {
             vscodeConfig.update(toolbarKey, { "default": "right" }, vscode.ConfigurationTarget.Global);
             output.appendLine(`[Layout] Cell Toolbar Restored to Right`);
@@ -159,14 +149,12 @@ function registerHijacks() {
     singleHijack?.dispose();
     allHijack?.dispose();
 
-    // Hook Run Single
     singleHijack = vscode.commands.registerCommand('notebook.cell.execute', async (args) => {
         output.appendLine("[DEBUG] >> Hijack: Run Single");
         await runSingleHandler(args);
     });
     extensionContext.subscriptions.push(singleHijack);
 
-    // Hook Run All
     allHijack = vscode.commands.registerCommand('notebook.execute', async (args) => {
         output.appendLine("[DEBUG] >> Hijack: Run All");
         await runSequenceHandler('all', args);
@@ -178,93 +166,55 @@ function registerHijacks() {
 const runScratchpadHandler = async () => {
     const activeTextEditor = vscode.window.activeTextEditor;
     const notebookEditor = vscode.window.activeNotebookEditor;
+    if (!notebookEditor || !activeTextEditor) return;
 
-    if (!notebookEditor || !activeTextEditor) {
-        vscode.window.showErrorMessage("Please focus a code cell in a notebook first.");
-        return;
-    }
-
-    // 1. Get Selected Text
     const selection = activeTextEditor.selection;
     let text = activeTextEditor.document.getText(selection).trim();
+    if (!text) return;
 
-    if (!text) {
-        vscode.window.showInformationMessage("No code selected to run in Scratchpad.");
-        return;
-    }
-
-    // 2. Identify Source Cell
     const notebook = notebookEditor.notebook;
     const sourceCell = notebook.getCells().find(c => c.document.uri.toString() === activeTextEditor.document.uri.toString());
-    
-    if (!sourceCell) {
-        output.appendLine("[ERROR] Could not find source cell for active editor.");
-        return;
-    }
+    if (!sourceCell) return;
 
     const sourceUri = sourceCell.document.uri.toString();
-    output.appendLine(`[Scratchpad] Source Cell Index: ${sourceCell.index}`);
+    const sourceRange = new vscode.NotebookRange(sourceCell.index, sourceCell.index + 1);
 
-    // 3. Check for Existing Scratchpad
     let scratchpadCell: vscode.NotebookCell | undefined;
-    const existingScratchpadUri = sourceToScratchpadMap.get(sourceUri);
-
-    if (existingScratchpadUri) {
-        // Verify it still exists in the notebook
-        scratchpadCell = notebook.getCells().find(c => c.document.uri.toString() === existingScratchpadUri);
-    }
+    const existingUri = sourceToScratchpadMap.get(sourceUri);
+    if (existingUri) scratchpadCell = notebook.getCells().find(c => c.document.uri.toString() === existingUri);
 
     if (scratchpadCell) {
-        // --- CASE A: UPDATE EXISTING ---
-        output.appendLine(`[Scratchpad] Updating existing cell at index ${scratchpadCell.index}`);
-        
-        // Replace Content
         const edit = new vscode.WorkspaceEdit();
-        const fullRange = new vscode.Range(0, 0, scratchpadCell.document.lineCount + 1, 0); // Covers all text
+        const fullRange = new vscode.Range(0, 0, scratchpadCell.document.lineCount + 1, 0);
         edit.replace(scratchpadCell.document.uri, fullRange, text);
         await vscode.workspace.applyEdit(edit);
-
     } else {
-        // --- CASE B: CREATE NEW ---
-        output.appendLine(`[Scratchpad] Creating NEW cell.`);
-        
         const insertIndex = sourceCell.index + 1;
-        const cellData = new vscode.NotebookCellData(
-            vscode.NotebookCellKind.Code,
-            text,
-            sourceCell.document.languageId || "python"
-        );
-        
+        const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, text, sourceCell.document.languageId || "python");
         const edit = new vscode.WorkspaceEdit();
-        const notebookEdit = vscode.NotebookEdit.insertCells(insertIndex, [cellData]);
-        edit.set(notebook.uri, [notebookEdit]);
-        
-        const applied = await vscode.workspace.applyEdit(edit);
-        if (!applied) return;
-
-        // Find the new cell (it is now at insertIndex)
-        scratchpadCell = notebook.cellAt(insertIndex);
-        
-        // Track it
-        sourceToScratchpadMap.set(sourceUri, scratchpadCell.document.uri.toString());
-        scratchpadCells.add(scratchpadCell.document.uri.toString());
+        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(insertIndex, [cellData])]);
+        if (await vscode.workspace.applyEdit(edit)) {
+            scratchpadCell = notebook.cellAt(insertIndex);
+            sourceToScratchpadMap.set(sourceUri, scratchpadCell.document.uri.toString());
+            scratchpadCells.add(scratchpadCell.document.uri.toString());
+        }
     }
 
-    // 4. Visuals & Execution
     if (scratchpadCell) {
-        // Apply Dashed Border
         restoreDecorationForCell(scratchpadCell);
+        
+        // Ensure the editor keeps the source cell selected (prevents jump)
+        notebookEditor.selections = [sourceRange];
 
-        // Focus the scratchpad
-        const range = new vscode.NotebookRange(scratchpadCell.index, scratchpadCell.index + 1);
-        notebookEditor.revealRange(range, vscode.NotebookEditorRevealType.Default);
-        notebookEditor.selections = [range];
-
-        // Execute
+        // We call the command with explicit ranges. 
+        // Our updated runSingleHandler above will now see these ranges and run the scratchpad.
         await vscode.commands.executeCommand('notebook.cell.execute', { 
             ranges: [{ start: scratchpadCell.index, end: scratchpadCell.index + 1 }], 
             notebookUri: notebook.uri 
         });
+
+        // Re-confirm selection hasn't moved
+        notebookEditor.selections = [sourceRange];
     }
 };
 
@@ -274,48 +224,41 @@ const runSingleHandler = async (args?: any) => {
     if (!editor) return;
 
     let cell: vscode.NotebookCell | undefined;
+    
+    // 1. Check if args is the Cell object (standard VS Code behavior)
     if (args && args.document) {
         cell = args; 
-    } else if (editor.selections.length > 0) {
+    } 
+    // 2. Check if args contains ranges (how our Scratchpad calls it)
+    else if (args && args.ranges && args.ranges.length > 0) {
+        cell = editor.notebook.cellAt(args.ranges[0].start);
+    }
+    // 3. Fallback: Use current selection
+    else if (editor.selections.length > 0) {
         cell = editor.notebook.cellAt(editor.selections[0].start);
     }
 
     if (cell) {
-        output.appendLine(`[Single] Processing Cell ${cell.index}`);
-        
+        output.appendLine(`[Single] Executing Cell Index: ${cell.index}`);
         cellStatusMap.delete(cell.document.uri.toString());
         restoreDecorationForCell(cell);
 
-        // Clear Next Cell Color
-        const nextIndex = cell.index + 1;
-        if (nextIndex < editor.notebook.cellCount) {
-            const nextCell = editor.notebook.cellAt(nextIndex);
-            cellStatusMap.delete(nextCell.document.uri.toString());
-            restoreDecorationForCell(nextCell);
-        }
-
         const stopAnim = startAnimationLoopForCell(cell);
-
         singleHijack?.dispose(); 
+
         try {
             await vscode.commands.executeCommand('notebook.cell.execute', { 
                 ranges: [{ start: cell.index, end: cell.index + 1 }], 
                 notebookUri: cell.notebook.uri 
             });
         } catch (e) {
-            output.appendLine(`[ERROR] Native run failed: ${e}`);
+            output.appendLine(`[ERROR] Exec failed: ${e}`);
         } finally {
             registerHijacks(); 
         }
 
         stopAnim();
         handleCellFinished(cell, cell.executionSummary?.success ?? false);
-
-        if (nextIndex < editor.notebook.cellCount) {
-            const nextRange = new vscode.NotebookRange(nextIndex, nextIndex + 1);
-            editor.selections = [nextRange];
-            editor.revealRange(nextRange, vscode.NotebookEditorRevealType.InCenterIfOutsideViewport);
-        }
     }
 };
 
@@ -323,10 +266,7 @@ const runSingleHandler = async (args?: any) => {
 const runSequenceHandler = async (mode: 'below' | 'above' | 'all', args?: any) => {
     output.appendLine(`[Sequence] Mode: ${mode}`);
     const editor = vscode.window.activeNotebookEditor;
-    if (!editor) {
-        output.appendLine("[ERROR] No active editor.");
-        return;
-    }
+    if (!editor) return;
 
     const notebook = editor.notebook;
     let loopStart = 0; 
@@ -336,20 +276,13 @@ const runSequenceHandler = async (mode: 'below' | 'above' | 'all', args?: any) =
     if (args && args.document) anchorIndex = args.index;
 
     if (mode === 'all') {
-        loopStart = 0;
-        loopEnd = notebook.cellCount;
-        cellStatusMap.clear();
-        clearAllDecorations();
+        loopStart = 0; loopEnd = notebook.cellCount;
+        cellStatusMap.clear(); clearAllDecorations();
     } else if (mode === 'below') {
-        loopStart = anchorIndex;
-        loopEnd = notebook.cellCount;
-        if (anchorIndex === 0) { 
-            cellStatusMap.clear(); 
-            clearAllDecorations(); 
-        }
+        loopStart = anchorIndex; loopEnd = notebook.cellCount;
+        if (anchorIndex === 0) { cellStatusMap.clear(); clearAllDecorations(); }
     } else {
-        loopStart = 0;
-        loopEnd = anchorIndex + 1;
+        loopStart = 0; loopEnd = anchorIndex + 1;
     }
 
     for (let i = loopStart; i < loopEnd; i++) {
@@ -367,8 +300,6 @@ const runSequenceHandler = async (mode: 'below' | 'above' | 'all', args?: any) =
             const cell = notebook.cellAt(i);
             if (cell.kind !== vscode.NotebookCellKind.Code || !cell.document.getText().trim()) continue;
 
-            output.appendLine(`[Sequence] Running Cell ${i}`);
-
             cellStatusMap.delete(cell.document.uri.toString());
             restoreDecorationForCell(cell);
 
@@ -385,10 +316,7 @@ const runSequenceHandler = async (mode: 'below' | 'above' | 'all', args?: any) =
             const success = cell.executionSummary?.success ?? false;
             handleCellFinished(cell, success);
 
-            if (!success) {
-                output.appendLine(`[Sequence] Cell ${i} Failed. Stopping.`);
-                break;
-            }
+            if (!success) break;
         }
     } finally {
         registerHijacks();
@@ -485,14 +413,14 @@ function checkForFinishedCells() {
 // --- DECORATION UTILS ---
 function restoreDecorationForEditor(editor: vscode.TextEditor) {
     if (editor.document.uri.scheme !== 'vscode-notebook-cell') return;
-    
+    if (!editor.selection.isEmpty) return;
+
     editor.setDecorations(successBgDec, []);
     editor.setDecorations(errorBgDec, []);
     editor.setDecorations(cmdSuccessDec, []);
     editor.setDecorations(cellSuccessDec, []);
     editor.setDecorations(scratchpadDec, []);
 
-    // Apply Scratchpad Decoration
     if (scratchpadCells.has(editor.document.uri.toString())) {
         const fullRange = new vscode.Range(0, 0, editor.document.lineCount, 0);
         editor.setDecorations(scratchpadDec, [fullRange]);
@@ -543,6 +471,17 @@ function reloadDecorations() {
     disposeAllDecorations();
     const config = vscode.workspace.getConfiguration('jupyterEnhancements');
     
+    // --- Determine Border Position and Thickness ---
+    const position = config.get<string>('outerBorder.position', 'left');
+    const thickness = config.get<string>('outerBorder.thickness', '6px');
+    
+    // CSS Order: Top Right Bottom Left
+    let outerBorderWidth = `0 ${thickness} 0 0`; // Default: Right
+    if (position === 'left')  outerBorderWidth = `0 0 0 ${thickness}`;
+	if (position === 'right')  outerBorderWidth = `0 ${thickness} 0 0`;
+    if (position === 'top')    outerBorderWidth = `${thickness} 0 0 0`;
+    if (position === 'bottom') outerBorderWidth = `0 0 ${thickness} 0`;
+
     successBgDec = vscode.window.createTextEditorDecorationType({ backgroundColor: config.get('background.successColor'), isWholeLine: true });
     errorBgDec = vscode.window.createTextEditorDecorationType({ backgroundColor: config.get('background.errorColor'), isWholeLine: true });
     flashDec = vscode.window.createTextEditorDecorationType({ backgroundColor: config.get('flash.color'), isWholeLine: true });
@@ -550,10 +489,20 @@ function reloadDecorations() {
     cmdRunningDec = vscode.window.createTextEditorDecorationType({ borderWidth: '1px', borderStyle: 'solid', borderColor: config.get('innerBorder.runningColor'), isWholeLine: true });
     cmdSuccessDec = vscode.window.createTextEditorDecorationType({ borderWidth: '1px', borderStyle: 'solid', borderColor: config.get('innerBorder.successColor'), isWholeLine: true });
     
-    cellRunningDec = vscode.window.createTextEditorDecorationType({ borderWidth: '0 0 0 6px', borderStyle: 'solid', borderColor: config.get('outerBorder.runningColor'), isWholeLine: true });
-    cellSuccessDec = vscode.window.createTextEditorDecorationType({ borderWidth: '0 0 0 6px', borderStyle: 'solid', borderColor: config.get('outerBorder.successColor'), isWholeLine: true });
+    // Apply dynamic width AND thickness to the cell (Outer) indicators
+    cellRunningDec = vscode.window.createTextEditorDecorationType({ 
+        borderWidth: outerBorderWidth, 
+        borderStyle: 'solid', 
+        borderColor: config.get('outerBorder.runningColor'), 
+        isWholeLine: true 
+    });
+    cellSuccessDec = vscode.window.createTextEditorDecorationType({ 
+        borderWidth: outerBorderWidth, 
+        borderStyle: 'solid', 
+        borderColor: config.get('outerBorder.successColor'), 
+        isWholeLine: true 
+    });
 
-    // Scratchpad Decoration
     scratchpadDec = vscode.window.createTextEditorDecorationType({
         borderStyle: config.get('scratchpad.borderStyle'),
         borderWidth: config.get('scratchpad.borderWidth'),

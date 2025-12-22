@@ -35,36 +35,17 @@ Toggle "Compact Mode" to maximize screen real estate.
 
 ---
 
-## ⚙️ Configuration
+## 🎨 Color Customization
 
-You can customize almost every aspect of this extension in **Settings** (`Ctrl+,`) under `Jupyter Enhancements`.
+You can fully customize the colors in your user `settings.json`. Copy and paste the snippet below:
 
-| Setting | Default | Description |
-| :--- | :--- | :--- |
-| `jupyterEnhancements.flash.enable` | `true` | Enable the completion flash effect. |
-| `jupyterEnhancements.background.enable` | `true` | Enable persistent Green/Red status backgrounds. |
-| `jupyterEnhancements.innerBorder.enable` | `true` | Show a blue border around the code while running. |
-| `jupyterEnhancements.scratchpad.borderStyle` | `dashed` | Visual style for scratchpad cells. |
-| `jupyterEnhancements.layout.enableCompactView` | `false` | Toggle tight layout settings. |
-
-*(All colors for success, error, borders, and flashes are fully customizable in settings).*
-
-## ⌨️ Shortcuts
-
-*   **`F11`**: Run selected text in Scratchpad.
-    *   *To change this: Open Keyboard Shortcuts (`Ctrl+K Ctrl+S`) and search for `jupyter-enhancements.runInScratchpad`.*
-
----
-
-## 🔧 Requirements
-
-*   VS Code `1.96.0` or higher.
-*   The Microsoft **Jupyter** extension installed.
-
----
-
-## 🤝 Contributing & Issues
-
-Found a bug? Have a feature request? Please report it on our [GitHub Repository](https://github.com/yimmas/jupyter-enhancements).
-
-**Enjoy your enhanced notebook experience!**
+```json
+{
+  "jupyterEnhancements.background.successColor": "#90EE9033",
+  "jupyterEnhancements.background.errorColor": "#FF000033",
+  "jupyterEnhancements.flash.color": "#FFFF0066",
+  "jupyterEnhancements.innerBorder.runningColor": "#0078FF",
+  "jupyterEnhancements.outerBorder.runningColor": "#0078FF",
+  "jupyterEnhancements.innerBorder.successColor": "#006400",
+  "jupyterEnhancements.outerBorder.successColor": "#006400"
+}
