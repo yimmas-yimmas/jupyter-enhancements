@@ -2,7 +2,7 @@
   "name": "jupyter-enhancements",
   "displayName": "Jupyter Enhancements",
   "description": "Supercharge Jupyter Notebooks with visual cues (Flash, Backgrounds, Borders) and smart execution controls.",
-  "version": "1.16.1",
+  "version": "1.20.14",
   "publisher": "yimmas",
   "icon": "icon.png",
   "engines": {
@@ -11,7 +11,7 @@
   "categories": [
     "Notebooks"
   ],
-"activationEvents": [
+  "activationEvents": [
     "onStartupFinished",
     "onNotebookEditor:jupyter-notebook",
     "onCommand:notebook.cell.executeCellAndBelow",
@@ -20,7 +20,20 @@
     "onCommand:notebook.execute",
     "onCommand:jupyter.runCellAndAllBelow",
     "onCommand:jupyter.runPrecedentCells",
-    "onCommand:jupyter.runDependentCells"
+    "onCommand:jupyter.runDependentCells",
+    "onCommand:jupyter-enhancements.splitCell",
+    "onCommand:jupyter-enhancements.mergeCells",
+    "onCommand:jupyter-enhancements.clearCellOutput",
+    "onCommand:jupyter-enhancements.runInScratchpadAbove",
+    "onCommand:jupyter-enhancements.runInScratchpadBelow",
+    "onCommand:jupyter-enhancements.runAndSelectNext",
+    "onCommand:jupyter-enhancements.toggleOutput",
+    "onCommand:jupyter-enhancements.moveCellUp",
+    "onCommand:jupyter-enhancements.moveCellDown",
+    "onCommand:jupyter-enhancements.copyCell",
+    "onCommand:jupyter-enhancements.pasteCell",
+    "onCommand:jupyter-enhancements.copyCellDown",
+    "onCommand:jupyter-enhancements.cutCell"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -31,9 +44,74 @@
         "icon": "$(run-below)"
       },
       {
+        "command": "jupyter-enhancements.runAndSelectNext",
+        "title": "Run & Select Next",
+        "icon": "$(debug-coverage)"
+      },
+      {
         "command": "jupyter-enhancements.runInScratchpad",
         "title": "Run Selection in Scratchpad",
         "icon": "$(add)"
+      },
+      {
+        "command": "jupyter-enhancements.runInScratchpadAbove",
+        "title": "Run Selection in Scratchpad (Above)",
+        "icon": "$(arrow-up)"
+      },
+      {
+        "command": "jupyter-enhancements.runInScratchpadBelow",
+        "title": "Run Selection in Scratchpad (Below)",
+        "icon": "$(arrow-down)"
+      },
+      {
+        "command": "jupyter-enhancements.splitCell",
+        "title": "Split Cell at Cursor",
+        "icon": "$(split-vertical)"
+      },
+      {
+        "command": "jupyter-enhancements.mergeCells",
+        "title": "Merge Cells",
+        "icon": "$(merge)"
+      },
+      {
+        "command": "jupyter-enhancements.clearCellOutput",
+        "title": "Clear Cell Output",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "jupyter-enhancements.toggleOutput",
+        "title": "Toggle Output",
+        "icon": "$(output)"
+      },
+      {
+        "command": "jupyter-enhancements.moveCellUp",
+        "title": "Move Cell Up",
+        "icon": "$(chevron-up)"
+      },
+      {
+        "command": "jupyter-enhancements.moveCellDown",
+        "title": "Move Cell Down",
+        "icon": "$(chevron-down)"
+      },
+      {
+        "command": "jupyter-enhancements.copyCell",
+        "title": "Copy Cell",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "jupyter-enhancements.pasteCell",
+        "title": "Paste Cell",
+        "icon": "$(file-add)"
+      },
+      {
+        "command": "jupyter-enhancements.copyCellDown",
+        "title": "Duplicate Cell (Copy Down)",
+        "icon": "$(versions)"
+      },
+      {
+        "command": "jupyter-enhancements.cutCell",
+        "title": "Cut Cell",
+        "icon": "$(issue-draft)"
       }
     ],
     "keybindings": [
@@ -46,27 +124,103 @@
     "menus": {
       "notebook/cell/title": [
         {
+          "command": "jupyter-enhancements.runAndSelectNext",
+          "group": "inline/0_cellops@0",
+          "when": "notebookType == jupyter-notebook"
+        },
+
+        {
+          "command": "jupyter-enhancements.toggleOutput",
+          "group": "inline/0_cellops@1",
+          "when": "notebookType == jupyter-notebook"
+        },
+
+
+        {
+          "command": "jupyter-enhancements.clearCellOutput",
+          "group": "inline/0_cellops@2",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.runInScratchpadAbove",
+          "group": "inline/0_cellops@3",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.runInScratchpadBelow",
+          "group": "inline/0_cellops@4",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.splitCell",
+          "group": "inline/0_cellops@5",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.mergeCells",
+          "group": "inline/0_cellops@6",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.moveCellUp",
+          "group": "inline/0_cellops@7",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.moveCellDown",
+          "group": "inline/0_cellops@8",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.copyCell",
+          "group": "inline/0_cellops@9",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.pasteCell",
+          "group": "inline/0_cellops@10",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.copyCellDown",
+          "group": "inline/0_cellops@11",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.cutCell",
+          "group": "inline/0_cellops@12",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
           "command": "jupyter-enhancements.execute",
           "group": "inline/run",
           "when": "notebookType == jupyter-notebook"
         }
       ],
-      "notebook/toolbar": [
-        {
-          "command": "jupyter-enhancements.execute",
-          "group": "navigation/execute",
-          "when": "notebookType == jupyter-notebook"
-        }
-      ],
       "notebook/cell/context": [
         {
+          "command": "jupyter-enhancements.splitCell",
+          "group": "1_execution@1",
+          "when": "notebookType == jupyter-notebook && editorTextFocus"
+        },
+        {
+          "command": "jupyter-enhancements.mergeCells",
+          "group": "1_execution@2",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
+          "command": "jupyter-enhancements.clearCellOutput",
+          "group": "1_execution@3",
+          "when": "notebookType == jupyter-notebook"
+        },
+        {
           "command": "jupyter-enhancements.execute",
-          "group": "1_execution",
+          "group": "1_execution@4",
           "when": "notebookType == jupyter-notebook"
         },
         {
           "command": "jupyter-enhancements.runInScratchpad",
-          "group": "1_execution",
+          "group": "1_execution@5",
           "when": "notebookType == jupyter-notebook"
         }
       ],
@@ -86,20 +240,16 @@
           "default": false,
           "description": "Enables a tight layout: Verbose timing, Line numbers ON, Small output font, Consolidated Run Button, etc."
         },
-
         "jupyterEnhancements.kernel.optimizeStartup": {
-  "type": "boolean",
-  "default": true,
-  "description": "Disables 'python.terminal.activateEnvironment' to significantly speed up startup when using Conda on Windows. (Default: True)"
-},
-
- "jupyterEnhancements.kernel.pythonPath": {
-        "type": "string",
-        "default": "t:/PYTHON/envs/jlab/python.exe",
-        "description": "Absolute path to the Python executable (e.g. C:/Anaconda3/python.exe). Forces this kernel on startup."
-      },
-
-
+          "type": "boolean",
+          "default": true,
+          "description": "Disables 'python.terminal.activateEnvironment' to significantly speed up startup when using Conda on Windows. (Default: True)"
+        },
+        "jupyterEnhancements.kernel.pythonPath": {
+          "type": "string",
+          "default": "t:/PYTHON/envs/jlab/python.exe",
+          "description": "Absolute path to the Python executable (e.g. C:/Anaconda3/python.exe). Forces this kernel on startup."
+        },
         "jupyterEnhancements.layout.hideCellToolbar": {
           "type": "boolean",
           "default": false,
@@ -165,25 +315,22 @@
           "default": true,
           "description": "Enable a thick indicator bar on the left side of the cell while running."
         },
-		
-		"jupyterEnhancements.outerBorder.position": {
-  "type": "string",
-  "default": "left",
-  "enum": [
-    "left",
-    "right",
-    "top",
-    "bottom"
-  ],
-  "description": "Side where the thick indicator bar appears."
-},
-
-"jupyterEnhancements.outerBorder.thickness": {
-  "type": "string",
-  "default": "10px",
-  "description": "Thickness of the outer indicator bar (e.g., '2px', '8px', '12px')."
-},
-
+        "jupyterEnhancements.outerBorder.position": {
+          "type": "string",
+          "default": "left",
+          "enum": [
+            "left",
+            "right",
+            "top",
+            "bottom"
+          ],
+          "description": "Side where the thick indicator bar appears."
+        },
+        "jupyterEnhancements.outerBorder.thickness": {
+          "type": "string",
+          "default": "6px",
+          "description": "Thickness of the outer indicator bar (e.g., '2px', '8px', '12px')."
+        },
         "jupyterEnhancements.outerBorder.persist": {
           "type": "boolean",
           "default": true,
@@ -221,7 +368,7 @@
         },
         "jupyterEnhancements.scratchpad.borderWidth": {
           "type": "string",
-          "default": "2px",
+          "default": "0.5px",
           "description": "Border width for Scratchpad cells."
         },
         "jupyterEnhancements.scratchpad.backgroundColor": {
@@ -229,6 +376,15 @@
           "format": "color-hex",
           "default": "#FFFFFF0D",
           "description": "Optional background color for Scratchpad cells."
+        },
+        "jupyterEnhancements.scratchpad.insertPosition": {
+          "type": "string",
+          "default": "below",
+          "enum": [
+            "below",
+            "above"
+          ],
+          "description": "Where to insert the scratchpad cell relative to the active cell."
         }
       }
     }

@@ -13,425 +13,563 @@ let scratchpadDec: vscode.TextEditorDecorationType;
 // --- STATE ---
 const cellStatusMap = new Map<string, 'success' | 'error'>();
 const lastExecutionTimes = new Map<string, number>();
-const activeAnimations = new Map<string, () => void>();
+const knownExecutionOrders = new Map<string, number>();
+const activeAnimations = new Map<string, NodeJS.Timeout>();
+const scratchpadCells = new Set<string>();
+const sourceToScratchpadMap = new Map<string, string>();
+const currentlyAnimatingUris = new Set<string>();
 
-// Scratchpad State
-const scratchpadCells = new Set<string>(); 
-const sourceToScratchpadMap = new Map<string, string>(); 
-
-let output: vscode.OutputChannel;
-let extensionContext: vscode.ExtensionContext;
-
-// --- HIJACK DISPOSABLES ---
-let singleHijack: vscode.Disposable | undefined;
-let allHijack: vscode.Disposable | undefined;
+// Track notebook open time to ignore false detections on load
+let lastNotebookOpenTime = 0;
 
 export function activate(context: vscode.ExtensionContext) {
-    extensionContext = context;
-    output = vscode.window.createOutputChannel("Jupyter Enhancements");
-    output.show(true);
-    output.appendLine("[INFO] Jupyter Enhancements Activated.");
-
     reloadDecorations();
-    updateLayoutSettings(); // Apply layout settings on startup
+    updateLayoutSettings();
+    clearAllAnimations();
 
-    // 1. Settings Listener
-    context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
-        if (e.affectsConfiguration('jupyterEnhancements')) {
-            output.appendLine("[DEBUG] Settings changed. Reloading decorations & layout.");
-            reloadDecorations();
+    if (vscode.window.activeNotebookEditor && vscode.window.activeNotebookEditor.notebook.notebookType === 'jupyter-notebook') {
+        initKnownStates(vscode.window.activeNotebookEditor.notebook);
+        lastNotebookOpenTime = Date.now();
+    }
+    
+    context.subscriptions.push(
+        vscode.workspace.onDidOpenNotebookDocument(notebook => {
+            if (notebook.notebookType === 'jupyter-notebook') {
+                initKnownStates(notebook);
+                clearAllAnimations();
+                lastNotebookOpenTime = Date.now(); 
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveNotebookEditor(editor => {
+            if (editor && editor.notebook.notebookType === 'jupyter-notebook') {
+                initKnownStates(editor.notebook);
+                lastNotebookOpenTime = Date.now(); 
+                clearAllAnimations(); 
+            }
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.debug.onDidChangeActiveDebugSession(() => {
             restoreAllVisibleDecorations();
-            updateLayoutSettings(); // Check if layout toggles changed
-        }
-    }));
+        })
+    );
+    
+    context.subscriptions.push(
+        vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration('jupyterEnhancements')) {
+                reloadDecorations();
+                restoreAllVisibleDecorations();
+                updateLayoutSettings();
+            }
+        })
+    );
 
-    // 2. Scroll Listener (Debounced)
-    let scrollTimeout: NodeJS.Timeout | undefined;
-    context.subscriptions.push(vscode.window.onDidChangeVisibleTextEditors(editors => {
-        if (scrollTimeout) clearTimeout(scrollTimeout);
-        scrollTimeout = setTimeout(() => {
-            for (const editor of editors) restoreDecorationForEditor(editor);
-        }, 100); // Wait 100ms for the user to stop dragging/scrolling
-    }));
+    context.subscriptions.push(
+        vscode.window.onDidChangeTextEditorSelection(e => {
+            if (e.textEditor.document.uri.scheme === 'vscode-notebook-cell') {
+                restoreDecorationForEditor(e.textEditor);
+            }
+        })
+    );
 
-    // 3. Poller
-    const pollInterval = setInterval(checkForFinishedCells, 200);
+    context.subscriptions.push(
+        vscode.window.onDidChangeVisibleTextEditors(editors => {
+            for (const editor of editors) {
+                if (editor.document.uri.scheme === 'vscode-notebook-cell') {
+                    const uri = editor.document.uri.toString();
+                    restoreDecorationForEditor(editor);
+                    if (currentlyAnimatingUris.has(uri)) {
+                        applyRunningDecorationsToEditor(editor, true);
+                    }
+                }
+            }
+        })
+    );
+
+    const pollInterval = setInterval(globalWatchdog, 100);
     context.subscriptions.push({ dispose: () => clearInterval(pollInterval) });
 
-    // 4. Global Event Listener
-    const notebooksAny = vscode.notebooks as any;
-    if (notebooksAny && typeof notebooksAny.onDidChangeNotebookCellExecutionState === 'function') {
-        context.subscriptions.push(notebooksAny.onDidChangeNotebookCellExecutionState((e: any) => {
-            handleExecutionStateChange(e);
-        }));
-    }
-
-    // 5. Register Hijacks
-    registerHijacks();
-
-    // 6. Register Permanent Commands
-    const register = (id: string, handler: (args: any) => any) => {
-        context.subscriptions.push(vscode.commands.registerCommand(id, handler));
-        output.appendLine(`[DEBUG] Registered Permanent: ${id}`);
-    };
-
-    // Main Run Command
-    register('jupyter-enhancements.execute', (args) => runSequenceHandler('below', args));
+    // --- COMMANDS ---
     
-    // Scratchpad Command
-    register('jupyter-enhancements.runInScratchpad', runScratchpadHandler);
+    // Scratchpad
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.runInScratchpad', (cell) => runScratchpadHandler(cell))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.runInScratchpadAbove', (cell) => runScratchpadHandler(cell, 'above'))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.runInScratchpadBelow', (cell) => runScratchpadHandler(cell, 'below'))
+    );
 
-    // Native & Jupyter Hijacks
-    register('notebook.cell.executeCellAndBelow', (args) => runSequenceHandler('below', args));
-    register('notebook.cell.executeCellsAbove', (args) => runSequenceHandler('above', args));
-    register('jupyter.runCellAndAllBelow', (args) => runSequenceHandler('below', args));
-    register('jupyter.runPrecedentCells', (args) => runSequenceHandler('above', args));
-    register('jupyter.runDependentCells', (args) => runSequenceHandler('below', args));
+    // Custom Execution
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.execute', (args) => runSequenceHandler('below', args))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.runAndSelectNext', runAndSelectNextHandler)
+    );
+
+    // Editing Ops
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.splitCell', splitCellHandler)
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.mergeCells', mergeCellHandler)
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.clearCellOutput', clearCellOutputHandler)
+    );
+
+    // Native Wrappers
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.toggleOutput', (cell) => executeNativeOnCell(cell, 'notebook.cell.toggleOutputs'))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.moveCellUp', (cell) => executeNativeOnCell(cell, 'notebook.cell.moveUp'))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.moveCellDown', (cell) => executeNativeOnCell(cell, 'notebook.cell.moveDown'))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.copyCell', (cell) => executeNativeOnCell(cell, 'notebook.cell.copy'))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.pasteCell', (cell) => executeNativeOnCell(cell, 'notebook.cell.paste'))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.copyCellDown', (cell) => executeNativeOnCell(cell, 'notebook.cell.copyDown'))
+    );
+    context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.cutCell', (cell) => executeNativeOnCell(cell, 'notebook.cell.cut'))
+    );
 }
 
-export function deactivate() {
-    disposeAllDecorations();
-    activeAnimations.forEach(stop => stop());
-}
+// =========================================================
+// --- STATE & WATCHDOG ---
+// =========================================================
+function initKnownStates(notebook?: vscode.NotebookDocument) {
+    const nb = notebook || vscode.window.activeNotebookEditor?.notebook;
+    if (!nb) return;
 
-// --- LAYOUT SETTINGS HANDLER ---
-function updateLayoutSettings() {
-    const config = vscode.workspace.getConfiguration('jupyterEnhancements');
-    const vscodeConfig = vscode.workspace.getConfiguration();
+    knownExecutionOrders.clear();
+    lastExecutionTimes.clear();
 
-    const enableCompact = config.get<boolean>('layout.enableCompactView', false);
-    
-    const compactSettings = {
-        "notebook.cellExecutionTimeVerbosity": "verbose",
-        "notebook.consolidatedRunButton": true,
-        "notebook.lineNumbers": "on",
-        "notebook.output.lineHeight": 15,
-        "notebook.output.minimalErrorRendering": true,
-        "notebook.showCellStatusBar": "visibleAfterExecute",
-        "notebook.variablesView": true,
-        "notebook.insertToolbarLocation": "notebookToolbar"
-    };
-
-    if (enableCompact) {
-        for (const [key, value] of Object.entries(compactSettings)) {
-            if (vscodeConfig.get(key) !== value) {
-                vscodeConfig.update(key, value, vscode.ConfigurationTarget.Global);
-                output.appendLine(`[Layout] Applied ${key}: ${value}`);
-            }
-        }
-    } else {
-        for (const [key, value] of Object.entries(compactSettings)) {
-            if (vscodeConfig.get(key) === value) {
-                vscodeConfig.update(key, undefined, vscode.ConfigurationTarget.Global);
-            }
-        }
-    }
-
-    const hideToolbar = config.get<boolean>('layout.hideCellToolbar', false);
-    const toolbarKey = "notebook.cellToolbarLocation";
-    const currentToolbar = vscodeConfig.get(toolbarKey);
-
-    if (hideToolbar) {
-        if (JSON.stringify(currentToolbar) !== JSON.stringify({ "default": "hidden" })) {
-            vscodeConfig.update(toolbarKey, { "default": "hidden" }, vscode.ConfigurationTarget.Global);
-            output.appendLine(`[Layout] Cell Toolbar Hidden`);
-        }
-    } else {
-        if (JSON.stringify(currentToolbar) === JSON.stringify({ "default": "hidden" })) {
-            vscodeConfig.update(toolbarKey, { "default": "right" }, vscode.ConfigurationTarget.Global);
-            output.appendLine(`[Layout] Cell Toolbar Restored to Right`);
-        }
+    for (const cell of nb.getCells()) {
+        if (cell.kind !== vscode.NotebookCellKind.Code) continue;
+        const uri = cell.document.uri.toString();
+        const summary = cell.executionSummary;
+        if (summary?.executionOrder !== undefined) knownExecutionOrders.set(uri, summary.executionOrder);
+        if (summary?.timing?.endTime !== undefined) lastExecutionTimes.set(uri, summary.timing.endTime);
     }
 }
 
-// --- HIJACK SETUP ---
-function registerHijacks() {
-    singleHijack?.dispose();
-    allHijack?.dispose();
-
-    singleHijack = vscode.commands.registerCommand('notebook.cell.execute', async (args) => {
-        output.appendLine("[DEBUG] >> Hijack: Run Single");
-        await runSingleHandler(args);
-    });
-    extensionContext.subscriptions.push(singleHijack);
-
-    allHijack = vscode.commands.registerCommand('notebook.execute', async (args) => {
-        output.appendLine("[DEBUG] >> Hijack: Run All");
-        await runSequenceHandler('all', args);
-    });
-    extensionContext.subscriptions.push(allHijack);
-}
-
-// --- SCRATCHPAD HANDLER ---
-const runScratchpadHandler = async () => {
-    const activeTextEditor = vscode.window.activeTextEditor;
-    const notebookEditor = vscode.window.activeNotebookEditor;
-    if (!notebookEditor || !activeTextEditor) return;
-
-    const selection = activeTextEditor.selection;
-    let text = activeTextEditor.document.getText(selection).trim();
-    if (!text) return;
-
-    const notebook = notebookEditor.notebook;
-    const sourceCell = notebook.getCells().find(c => c.document.uri.toString() === activeTextEditor.document.uri.toString());
-    if (!sourceCell) return;
-
-    const sourceUri = sourceCell.document.uri.toString();
-    const sourceRange = new vscode.NotebookRange(sourceCell.index, sourceCell.index + 1);
-
-    let scratchpadCell: vscode.NotebookCell | undefined;
-    const existingUri = sourceToScratchpadMap.get(sourceUri);
-    if (existingUri) scratchpadCell = notebook.getCells().find(c => c.document.uri.toString() === existingUri);
-
-    if (scratchpadCell) {
-        const edit = new vscode.WorkspaceEdit();
-        const fullRange = new vscode.Range(0, 0, scratchpadCell.document.lineCount + 1, 0);
-        edit.replace(scratchpadCell.document.uri, fullRange, text);
-        await vscode.workspace.applyEdit(edit);
-    } else {
-        const insertIndex = sourceCell.index + 1;
-        const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, text, sourceCell.document.languageId || "python");
-        const edit = new vscode.WorkspaceEdit();
-        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(insertIndex, [cellData])]);
-        if (await vscode.workspace.applyEdit(edit)) {
-            scratchpadCell = notebook.cellAt(insertIndex);
-            sourceToScratchpadMap.set(sourceUri, scratchpadCell.document.uri.toString());
-            scratchpadCells.add(scratchpadCell.document.uri.toString());
-        }
-    }
-
-    if (scratchpadCell) {
-        restoreDecorationForCell(scratchpadCell);
-        
-        // Ensure the editor keeps the source cell selected (prevents jump)
-        notebookEditor.selections = [sourceRange];
-
-        // We call the command with explicit ranges. 
-        // Our updated runSingleHandler above will now see these ranges and run the scratchpad.
-        await vscode.commands.executeCommand('notebook.cell.execute', { 
-            ranges: [{ start: scratchpadCell.index, end: scratchpadCell.index + 1 }], 
-            notebookUri: notebook.uri 
-        });
-
-        // Re-confirm selection hasn't moved
-        notebookEditor.selections = [sourceRange];
-    }
-};
-
-// --- RUN SINGLE HANDLER ---
-const runSingleHandler = async (args?: any) => {
+// FIX: Improved Watchdog logic to prevent premature stop
+function globalWatchdog() {
     const editor = vscode.window.activeNotebookEditor;
-    if (!editor) return;
+    if (!editor || editor.notebook.notebookType !== 'jupyter-notebook') return;
 
-    let cell: vscode.NotebookCell | undefined;
-    
-    // 1. Check if args is the Cell object (standard VS Code behavior)
-    if (args && args.document) {
-        cell = args; 
-    } 
-    // 2. Check if args contains ranges (how our Scratchpad calls it)
-    else if (args && args.ranges && args.ranges.length > 0) {
-        cell = editor.notebook.cellAt(args.ranges[0].start);
-    }
-    // 3. Fallback: Use current selection
-    else if (editor.selections.length > 0) {
-        cell = editor.notebook.cellAt(editor.selections[0].start);
-    }
+    const now = Date.now();
+    const timeSinceOpen = now - lastNotebookOpenTime;
+    const isSettling = timeSinceOpen < 5000; 
 
-    if (cell) {
-        output.appendLine(`[Single] Executing Cell Index: ${cell.index}`);
-        cellStatusMap.delete(cell.document.uri.toString());
-        restoreDecorationForCell(cell);
+    for (const cell of editor.notebook.getCells()) {
+        if (cell.kind !== vscode.NotebookCellKind.Code) continue;
 
-        const stopAnim = startAnimationLoopForCell(cell);
-        singleHijack?.dispose(); 
+        const uri = cell.document.uri.toString();
+        const summary = cell.executionSummary;
 
-        try {
-            await vscode.commands.executeCommand('notebook.cell.execute', { 
-                ranges: [{ start: cell.index, end: cell.index + 1 }], 
-                notebookUri: cell.notebook.uri 
-            });
-        } catch (e) {
-            output.appendLine(`[ERROR] Exec failed: ${e}`);
-        } finally {
-            registerHijacks(); 
+        const currentOrder = summary?.executionOrder || 0;
+        const lastOrder = knownExecutionOrders.get(uri) || 0;
+        const lastEnd = lastExecutionTimes.get(uri) || 0;
+        const currentEnd = summary?.timing?.endTime || 0;
+
+        // 1. FINISHED
+        // Logic: Execution time has advanced past what we previously knew.
+        if (currentEnd > lastEnd) {
+            lastExecutionTimes.set(uri, currentEnd);
+            knownExecutionOrders.set(uri, currentOrder);
+            currentlyAnimatingUris.delete(uri);
+            stopRunningVisuals(uri);
+
+            const success = summary?.success ?? false;
+            // Only flash/focus if finished < 2s ago (prevents old paste triggering)
+            const isRecent = (now - currentEnd) < 2000; 
+
+            cellStatusMap.set(uri, success ? 'success' : 'error');
+
+            if (isRecent) {
+                handleCellFinished(cell, success);
+                if (editor.selections[0]?.start === cell.index) {
+                    setTimeout(() => refreshCellFocus(), 100);
+                }
+            } else {
+                restoreDecorationForCell(cell);
+            }
+            continue;
         }
 
-        stopAnim();
-        handleCellFinished(cell, cell.executionSummary?.success ?? false);
-    }
-};
-
-// --- RUN SEQUENCE HANDLER ---
-const runSequenceHandler = async (mode: 'below' | 'above' | 'all', args?: any) => {
-    output.appendLine(`[Sequence] Mode: ${mode}`);
-    const editor = vscode.window.activeNotebookEditor;
-    if (!editor) return;
-
-    const notebook = editor.notebook;
-    let loopStart = 0; 
-    let loopEnd = notebook.cellCount;
-    let anchorIndex = editor.selections[0]?.start ?? 0;
-
-    if (args && args.document) anchorIndex = args.index;
-
-    if (mode === 'all') {
-        loopStart = 0; loopEnd = notebook.cellCount;
-        cellStatusMap.clear(); clearAllDecorations();
-    } else if (mode === 'below') {
-        loopStart = anchorIndex; loopEnd = notebook.cellCount;
-        if (anchorIndex === 0) { cellStatusMap.clear(); clearAllDecorations(); }
-    } else {
-        loopStart = 0; loopEnd = anchorIndex + 1;
-    }
-
-    for (let i = loopStart; i < loopEnd; i++) {
-        const c = notebook.cellAt(i);
-        if (c.kind === vscode.NotebookCellKind.Code) {
-            cellStatusMap.delete(c.document.uri.toString());
-            restoreDecorationForCell(c);
-        }
-    }
-
-    singleHijack?.dispose();
-
-    try {
-        for (let i = loopStart; i < loopEnd; i++) {
-            const cell = notebook.cellAt(i);
-            if (cell.kind !== vscode.NotebookCellKind.Code || !cell.document.getText().trim()) continue;
-
-            cellStatusMap.delete(cell.document.uri.toString());
-            restoreDecorationForCell(cell);
-
-            const range = new vscode.NotebookRange(i, i + 1);
-            editor.selections = [range];
-            editor.revealRange(range, vscode.NotebookEditorRevealType.InCenterIfOutsideViewport);
-
-            await new Promise(r => setTimeout(r, 100));
-
-            const stopAnim = startAnimationLoopForCell(cell);
-            await executeCellAndWaitNative(cell);
-            stopAnim();
+        // 2. STARTED / RESTARTED
+        // Logic: The execution order increased. This means a NEW run has begun.
+        if (currentOrder > lastOrder) {
+            knownExecutionOrders.set(uri, currentOrder);
             
-            const success = cell.executionSummary?.success ?? false;
-            handleCellFinished(cell, success);
-
-            if (!success) break;
-        }
-    } finally {
-        registerHijacks();
-    }
-};
-
-// --- CORE HELPERS ---
-
-async function executeCellAndWaitNative(cell: vscode.NotebookCell): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-        const poller = setInterval(() => {
-            if (cell.executionSummary?.success !== undefined) {
-                clearInterval(poller);
-                resolve(cell.executionSummary.success);
+            // IMPORTANT FIX: 
+            // If the cell is re-running, 'currentEnd' might still hold the timestamp from the PREVIOUS run.
+            // We must update 'lastEnd' to this stale timestamp so that we don't trigger "FINISHED" immediately
+            // in the next loop tick. We wait for 'currentEnd' to become GREATER than this value.
+            if (currentEnd > 0) {
+                lastExecutionTimes.set(uri, currentEnd);
             }
-        }, 100);
 
-        vscode.commands.executeCommand('notebook.cell.execute', {
-            ranges: [{ start: cell.index, end: cell.index + 1 }],
-            notebookUri: cell.notebook.uri
-        }).then(undefined, (err) => { output.appendLine(`[ERROR] Exec failed: ${err}`); });
+            if (vscode.debug.activeDebugSession) continue;
+            if (isSettling) continue; 
+
+            if (!currentlyAnimatingUris.has(uri)) {
+                currentlyAnimatingUris.add(uri);
+                startRunningVisuals(cell);
+            }
+        }
+    }
+}
+
+function clearAllAnimations() {
+    currentlyAnimatingUris.clear();
+    activeAnimations.forEach(interval => clearInterval(interval));
+    activeAnimations.clear();
+
+    vscode.window.visibleTextEditors.forEach(editor => {
+        if (editor.document.uri.scheme === 'vscode-notebook-cell') {
+            editor.setDecorations(cmdRunningDec, []);
+            editor.setDecorations(cellRunningDec, []);
+        }
     });
 }
 
-function startAnimationLoopForCell(cell: vscode.NotebookCell): () => void {
-    const config = vscode.workspace.getConfiguration('jupyterEnhancements');
-    const enableInner = config.get<boolean>('innerBorder.enable', true);
-    const enableOuter = config.get<boolean>('outerBorder.enable', true);
+// =========================================================
+// --- VISUAL ENGINE ---
+// =========================================================
+function startRunningVisuals(cell: vscode.NotebookCell) {
+    const uri = cell.document.uri.toString();
+    cellStatusMap.delete(uri);
+    restoreDecorationForCell(cell);
+    startAnimationLoopForCell(cell);
 
-    if (!enableInner && !enableOuter) return () => {};
+    const editor = vscode.window.activeNotebookEditor;
+    if (editor) ensureCellIsVisible(editor, cell);
+
+    const nextIndex = cell.index + 1;
+    if (nextIndex < cell.notebook.cellCount) {
+        const nextCell = cell.notebook.cellAt(nextIndex);
+        cellStatusMap.delete(nextCell.document.uri.toString());
+        restoreDecorationForCell(nextCell);
+    }
+}
+
+function stopRunningVisuals(uri: string) {
+    if (activeAnimations.has(uri)) {
+        clearInterval(activeAnimations.get(uri)!);
+        activeAnimations.delete(uri);
+    }
+    vscode.window.visibleTextEditors
+        .filter(e => e.document.uri.toString() === uri)
+        .forEach(e => applyRunningDecorationsToEditor(e, false));
+}
+
+function applyRunningDecorationsToEditor(editor: vscode.TextEditor, visible: boolean) {
+    const range = new vscode.Range(0, 0, editor.document.lineCount, 0);
+    editor.setDecorations(cmdRunningDec, visible ? [range] : []);
+    editor.setDecorations(cellRunningDec, visible ? [range] : []);
+}
+
+function startAnimationLoopForCell(cell: vscode.NotebookCell) {
+    const uri = cell.document.uri.toString();
+    if (activeAnimations.has(uri)) return;
 
     let visible = true;
-    const toggle = () => {
-        const editors = vscode.window.visibleTextEditors.filter(e => e.document.uri.toString() === cell.document.uri.toString());
-        for (const editor of editors) {
-            const range = new vscode.Range(0, 0, editor.document.lineCount, 0);
-            if (enableInner) editor.setDecorations(cmdRunningDec, visible ? [range] : []);
-            if (enableOuter) editor.setDecorations(cellRunningDec, visible ? [range] : []);
-        }
+    const update = () => {
+        const editors = vscode.window.visibleTextEditors.filter(e => e.document.uri.toString() === uri);
+        editors.forEach(editor => applyRunningDecorationsToEditor(editor, visible));
         visible = !visible;
     };
-    toggle(); 
-    const timer = setInterval(toggle, 500);
-    return () => { clearInterval(timer); removeDecoration(cell, cmdRunningDec); removeDecoration(cell, cellRunningDec); };
-}
+    update();
 
-// --- VISUAL LOGIC ---
+    const interval = setInterval(update, 500);
+    activeAnimations.set(uri, interval);
 
-function handleExecutionStateChange(e: any) {
-    const cell = e.cell;
-    if (e.state === 3) { 
-        if (!activeAnimations.has(cell.document.uri.toString())) {
-            const stop = startAnimationLoopForCell(cell);
-            activeAnimations.set(cell.document.uri.toString(), stop);
+    setTimeout(() => {
+        if (activeAnimations.has(uri)) {
+            clearInterval(interval);
+            activeAnimations.delete(uri);
+            currentlyAnimatingUris.delete(uri);
+            stopRunningVisuals(uri);
+            restoreDecorationForCell(cell);
         }
-    } else if (e.state === 1) { 
-        if (activeAnimations.has(cell.document.uri.toString())) {
-            activeAnimations.get(cell.document.uri.toString())!();
-            activeAnimations.delete(cell.document.uri.toString());
-        }
-        handleCellFinished(cell, cell.executionSummary?.success ?? false);
-    }
+    }, 10000);
 }
 
 function handleCellFinished(cell: vscode.NotebookCell, success: boolean) {
     const uri = cell.document.uri.toString();
     cellStatusMap.set(uri, success ? 'success' : 'error');
-    if (cell.executionSummary?.timing?.endTime) lastExecutionTimes.set(uri, cell.executionSummary.timing.endTime);
 
-    const config = vscode.workspace.getConfiguration('jupyterEnhancements');
-    if (success && config.get('flash.enable')) {
+    const isDebugging = !!vscode.debug.activeDebugSession;
+    const shouldFlash = success && 
+                        !isDebugging && 
+                        vscode.workspace.getConfiguration('jupyterEnhancements').get<boolean>('flash.enable');
+    
+    if (shouldFlash) {
         applyDecoration(cell, flashDec);
-        setTimeout(() => removeDecoration(cell, flashDec), config.get('general.flashDuration', 300));
+        setTimeout(() => removeDecoration(cell, flashDec),
+            vscode.workspace.getConfiguration('jupyterEnhancements').get<number>('general.flashDuration', 300));
     }
+
     restoreDecorationForCell(cell);
 }
 
-function checkForFinishedCells() {
-    const editor = vscode.window.activeNotebookEditor;
-    if (!editor) return;
-    for (const cell of editor.notebook.getCells()) {
-        if (cell.kind !== vscode.NotebookCellKind.Code) continue;
-        const summary = cell.executionSummary;
-        if (summary && summary.timing?.endTime) {
-            const uri = cell.document.uri.toString();
-            const lastTime = lastExecutionTimes.get(uri) ?? 0;
-            if (summary.timing.endTime > lastTime) {
-                handleCellFinished(cell, summary.success ?? false);
-            }
-        }
+async function refreshCellFocus() {
+    await vscode.commands.executeCommand('notebook.cell.quitEdit');
+    await vscode.commands.executeCommand('notebook.cell.edit');
+}
+
+function ensureCellIsVisible(editor: vscode.NotebookEditor, cell: vscode.NotebookCell) {
+    const isVisible = editor.visibleRanges.some(range => cell.index >= range.start && cell.index < range.end);
+    const range = new vscode.NotebookRange(cell.index, cell.index + 1);
+    if (!isVisible) {
+        editor.revealRange(range, vscode.NotebookEditorRevealType.AtTop);
     }
 }
 
-// --- DECORATION UTILS ---
-function restoreDecorationForEditor(editor: vscode.TextEditor) {
-    if (editor.document.uri.scheme !== 'vscode-notebook-cell') return;
-    if (!editor.selection.isEmpty) return;
+// =========================================================
+// --- COMMAND HANDLERS ---
+// =========================================================
 
-    editor.setDecorations(successBgDec, []);
-    editor.setDecorations(errorBgDec, []);
-    editor.setDecorations(cmdSuccessDec, []);
-    editor.setDecorations(cellSuccessDec, []);
-    editor.setDecorations(scratchpadDec, []);
+const executeNativeOnCell = async (cellOrContext: any, commandId: string) => {
+    if (cellOrContext && 'notebook' in cellOrContext) {
+        const cell = cellOrContext as vscode.NotebookCell;
+        const editor = vscode.window.activeNotebookEditor;
+        if (editor) {
+            const isSelected = editor.selections.some(s => s.start <= cell.index && s.end > cell.index);
+            if (!isSelected) {
+                editor.selections = [new vscode.NotebookRange(cell.index, cell.index + 1)];
+            }
+        }
+    }
+    await vscode.commands.executeCommand(commandId);
+};
 
-    if (scratchpadCells.has(editor.document.uri.toString())) {
-        const fullRange = new vscode.Range(0, 0, editor.document.lineCount, 0);
-        editor.setDecorations(scratchpadDec, [fullRange]);
+const clearCellOutputHandler = async (cellOrContext?: vscode.NotebookCell | any) => {
+    executeNativeOnCell(cellOrContext, 'notebook.cell.clearOutputs');
+};
+
+const runAndSelectNextHandler = async (cellOrContext?: vscode.NotebookCell | any) => {
+    await executeNativeOnCell(cellOrContext, 'notebook.cell.executeAndSelectBelow');
+    const editor = vscode.window.activeNotebookEditor;
+    if (editor && editor.selections.length > 0) {
+        const activeIndex = editor.selections[0].start;
+        const range = new vscode.NotebookRange(activeIndex, activeIndex + 1);
+        editor.revealRange(range, vscode.NotebookEditorRevealType.InCenter);
+    }
+};
+
+const mergeCellHandler = async () => {
+    const notebookEditor = vscode.window.activeNotebookEditor;
+    if (!notebookEditor) return;
+    const selection = notebookEditor.selections[0];
+    if (!selection) return;
+
+    let start = selection.start;
+    let end = selection.end;
+    const notebook = notebookEditor.notebook;
+
+    if (end - start === 1) {
+        if (start + 1 < notebook.cellCount) {
+            end = start + 2;
+        } else {
+            return; 
+        }
     }
 
-    const status = cellStatusMap.get(editor.document.uri.toString());
-    if (!status) return; 
+    const cells = [];
+    for (let i = start; i < end; i++) cells.push(notebook.cellAt(i));
+    
+    const text = cells.map(c => c.document.getText()).join('\n');
+    const first = cells[0];
+    
+    const newCell = new vscode.NotebookCellData(first.kind, text, first.document.languageId);
+    const edit = new vscode.WorkspaceEdit();
+    const range = new vscode.NotebookRange(start, end);
+    edit.set(notebook.uri, [vscode.NotebookEdit.replaceCells(range, [newCell])]);
+    await vscode.workspace.applyEdit(edit);
+};
+
+const splitCellHandler = async () => {
+    const editor = vscode.window.activeTextEditor;
+    const notebookEditor = vscode.window.activeNotebookEditor;
+
+    if (!editor && !notebookEditor) {
+        vscode.window.showInformationMessage("Please click inside a cell to split it.");
+        return;
+    }
+
+    await vscode.commands.executeCommand('notebook.cell.split');
+};
+
+const runScratchpadHandler = async (contextCell?: any, overridePosition?: 'above' | 'below') => {
+    let sourceCell: vscode.NotebookCell | undefined;
+    let textToRun = "";
+
+    if (contextCell && 'notebook' in contextCell) {
+        sourceCell = contextCell;
+    }
+
+    const editor = vscode.window.activeTextEditor;
+    const notebookEditor = vscode.window.activeNotebookEditor;
+    
+    if (editor) {
+        const isMatchesSource = !sourceCell || editor.document.uri.toString() === sourceCell.document.uri.toString();
+        if (isMatchesSource) {
+            const selText = editor.document.getText(editor.selection).trim();
+            if (selText) {
+                textToRun = selText;
+                if (!sourceCell && notebookEditor) {
+                     sourceCell = notebookEditor.notebook.getCells().find(c => c.document.uri.toString() === editor.document.uri.toString());
+                }
+            }
+        }
+    }
+
+    if (!textToRun && sourceCell) {
+        textToRun = sourceCell.document.getText().trim();
+    }
+    
+    if (!sourceCell || !textToRun || !notebookEditor) return;
+
+    const notebook = notebookEditor.notebook;
+    const sourceUri = sourceCell.document.uri.toString();
+    const existingUri = sourceToScratchpadMap.get(sourceUri);
+    let scratchpadCell: vscode.NotebookCell | undefined;
+
+    let insertPosition = overridePosition;
+    if (!insertPosition) {
+         const config = vscode.workspace.getConfiguration('jupyterEnhancements');
+         insertPosition = config.get<string>('scratchpad.insertPosition', 'below') as 'above' | 'below';
+    }
+
+    if (existingUri) {
+        scratchpadCell = notebook.getCells().find(c => c.document.uri.toString() === existingUri);
+    }
+
+    if (scratchpadCell) {
+        const diff = scratchpadCell.index - sourceCell.index;
+        const isCorrectPosition = (insertPosition === 'above' && diff === -1) || 
+                                  (insertPosition === 'below' && diff === 1);
+        
+        if (!isCorrectPosition) {
+            scratchpadCell = undefined; 
+        }
+    }
+
+    if (scratchpadCell) {
+        const edit = new vscode.WorkspaceEdit();
+        const lastLine = scratchpadCell.document.lineAt(scratchpadCell.document.lineCount - 1);
+        const fullRange = new vscode.Range(new vscode.Position(0, 0), lastLine.range.end);
+        edit.replace(scratchpadCell.document.uri, fullRange, textToRun);
+        await vscode.workspace.applyEdit(edit);
+    } else {
+        const insertIndex = insertPosition === 'above' ? sourceCell.index : sourceCell.index + 1;
+
+        const cellData = new vscode.NotebookCellData(vscode.NotebookCellKind.Code, textToRun, sourceCell.document.languageId || "python");
+        const edit = new vscode.WorkspaceEdit();
+        edit.set(notebook.uri, [vscode.NotebookEdit.insertCells(insertIndex, [cellData])]);
+        await vscode.workspace.applyEdit(edit);
+
+        scratchpadCell = notebook.cellAt(insertIndex);
+        sourceToScratchpadMap.set(sourceUri, scratchpadCell.document.uri.toString());
+        scratchpadCells.add(scratchpadCell.document.uri.toString());
+    }
+
+    if (scratchpadCell) {
+        setTimeout(async () => {
+            if (!notebookEditor) return;
+
+            const range = new vscode.NotebookRange(scratchpadCell!.index, scratchpadCell!.index + 1);
+            notebookEditor.revealRange(range, vscode.NotebookEditorRevealType.Default);
+            notebookEditor.selections = [range];
+            
+            await vscode.commands.executeCommand('notebook.cell.execute', {
+                ranges: [{ start: scratchpadCell!.index, end: scratchpadCell!.index + 1 }],
+                notebookUri: notebook.uri
+            });
+            await refreshCellFocus();
+        }, 300);
+    }
+};
+
+const runSequenceHandler = async (mode: 'below' | 'above' | 'all', args?: any) => {
+    const editor = vscode.window.activeNotebookEditor;
+    if (!editor) return;
+
+    const notebook = editor.notebook;
+    const anchorIndex = args?.index ?? editor.selections[0]?.start ?? 0;
+    let start = 0, end = notebook.cellCount;
+    if (mode === 'below') start = anchorIndex;
+    else if (mode === 'above') end = anchorIndex + 1;
+
+    for (let i = start; i < end; i++) {
+        const cell = notebook.cellAt(i);
+        if (cell.kind !== vscode.NotebookCellKind.Code || !cell.document.getText().trim()) continue;
+
+        ensureCellIsVisible(editor, cell);
+        await new Promise(r => setTimeout(r, 50));
+
+        await vscode.commands.executeCommand('notebook.cell.execute', {
+            ranges: [{ start: i, end: i + 1 }],
+            notebookUri: notebook.uri
+        });
+
+        await new Promise<void>((resolve) => {
+            const poller = setInterval(() => {
+                if (cell.executionSummary?.success !== undefined) {
+                    clearInterval(poller);
+                    resolve();
+                }
+            }, 100);
+        });
+
+        if (cell.executionSummary?.success === false) break;
+    }
+};
+
+function restoreDecorationForEditor(editor: vscode.TextEditor) {
+    if (editor.document.uri.scheme !== 'vscode-notebook-cell') return;
+
+    const uri = editor.document.uri.toString();
+    const range = new vscode.Range(0, 0, editor.document.lineCount, 0);
+
+    editor.setDecorations(scratchpadDec, scratchpadCells.has(uri) ? [range] : []);
+
+    if (vscode.debug.activeDebugSession) {
+        editor.setDecorations(successBgDec, []);
+        editor.setDecorations(errorBgDec, []);
+        editor.setDecorations(cmdSuccessDec, []);
+        editor.setDecorations(cellSuccessDec, []);
+        return;
+    }
+
+    const isSelecting = !editor.selection.isEmpty;
+    const status = cellStatusMap.get(uri);
+
+    if (!status || isSelecting) {
+        editor.setDecorations(successBgDec, []);
+        editor.setDecorations(errorBgDec, []);
+        return;
+    }
 
     const config = vscode.workspace.getConfiguration('jupyterEnhancements');
-    const range = new vscode.Range(0, 0, editor.document.lineCount, 0);
-    
     if (status === 'success') {
         if (config.get('background.enable')) editor.setDecorations(successBgDec, [range]);
         if (config.get('innerBorder.persist')) editor.setDecorations(cmdSuccessDec, [range]);
@@ -440,74 +578,119 @@ function restoreDecorationForEditor(editor: vscode.TextEditor) {
         if (config.get('background.enable')) editor.setDecorations(errorBgDec, [range]);
     }
 }
+
 function restoreDecorationForCell(cell: vscode.NotebookCell) {
-    const editors = vscode.window.visibleTextEditors.filter(e => e.document.uri.toString() === cell.document.uri.toString());
-    for (const editor of editors) restoreDecorationForEditor(editor);
+    vscode.window.visibleTextEditors
+        .filter(e => e.document.uri.toString() === cell.document.uri.toString())
+        .forEach(restoreDecorationForEditor);
 }
+
 function restoreAllVisibleDecorations() {
-    for (const editor of vscode.window.visibleTextEditors) restoreDecorationForEditor(editor);
+    vscode.window.visibleTextEditors.forEach(restoreDecorationForEditor);
 }
+
 function applyDecoration(cell: vscode.NotebookCell, dec: vscode.TextEditorDecorationType) {
-    const editors = vscode.window.visibleTextEditors.filter(e => e.document.uri.toString() === cell.document.uri.toString());
-    for (const editor of editors) { const range = new vscode.Range(0, 0, editor.document.lineCount, 0); editor.setDecorations(dec, [range]); }
+    vscode.window.visibleTextEditors
+        .filter(e => e.document.uri.toString() === cell.document.uri.toString())
+        .forEach(e => e.setDecorations(dec, [new vscode.Range(0, 0, e.document.lineCount, 0)]));
 }
+
 function removeDecoration(cell: vscode.NotebookCell, dec: vscode.TextEditorDecorationType) {
-    const editors = vscode.window.visibleTextEditors.filter(e => e.document.uri.toString() === cell.document.uri.toString());
-    for (const editor of editors) editor.setDecorations(dec, []);
+    vscode.window.visibleTextEditors
+        .filter(e => e.document.uri.toString() === cell.document.uri.toString())
+        .forEach(e => e.setDecorations(dec, []));
 }
-function clearAllDecorations() {
-    const editors = vscode.window.visibleTextEditors;
-    for (const editor of editors) {
-        if (editor.document.uri.scheme === 'vscode-notebook-cell') {
-            editor.setDecorations(successBgDec, []); editor.setDecorations(errorBgDec, []); editor.setDecorations(flashDec, []);
-            editor.setDecorations(cmdRunningDec, []); editor.setDecorations(cmdSuccessDec, []); editor.setDecorations(cellRunningDec, []); editor.setDecorations(cellSuccessDec, []);
-        }
-    }
-}
-function disposeAllDecorations() {
-    successBgDec?.dispose(); errorBgDec?.dispose(); flashDec?.dispose(); cmdRunningDec?.dispose(); cmdSuccessDec?.dispose(); cellRunningDec?.dispose(); cellSuccessDec?.dispose(); scratchpadDec?.dispose();
-}
+
 function reloadDecorations() {
     disposeAllDecorations();
+
     const config = vscode.workspace.getConfiguration('jupyterEnhancements');
-    
-    // --- Determine Border Position and Thickness ---
     const position = config.get<string>('outerBorder.position', 'left');
     const thickness = config.get<string>('outerBorder.thickness', '6px');
-    
-    // CSS Order: Top Right Bottom Left
-    let outerBorderWidth = `0 ${thickness} 0 0`; // Default: Right
-    if (position === 'left')  outerBorderWidth = `0 0 0 ${thickness}`;
-	if (position === 'right')  outerBorderWidth = `0 ${thickness} 0 0`;
-    if (position === 'top')    outerBorderWidth = `${thickness} 0 0 0`;
-    if (position === 'bottom') outerBorderWidth = `0 0 ${thickness} 0`;
 
-    successBgDec = vscode.window.createTextEditorDecorationType({ backgroundColor: config.get('background.successColor'), isWholeLine: true });
-    errorBgDec = vscode.window.createTextEditorDecorationType({ backgroundColor: config.get('background.errorColor'), isWholeLine: true });
-    flashDec = vscode.window.createTextEditorDecorationType({ backgroundColor: config.get('flash.color'), isWholeLine: true });
-    
-    cmdRunningDec = vscode.window.createTextEditorDecorationType({ borderWidth: '1px', borderStyle: 'solid', borderColor: config.get('innerBorder.runningColor'), isWholeLine: true });
-    cmdSuccessDec = vscode.window.createTextEditorDecorationType({ borderWidth: '1px', borderStyle: 'solid', borderColor: config.get('innerBorder.successColor'), isWholeLine: true });
-    
-    // Apply dynamic width AND thickness to the cell (Outer) indicators
-    cellRunningDec = vscode.window.createTextEditorDecorationType({ 
-        borderWidth: outerBorderWidth, 
-        borderStyle: 'solid', 
-        borderColor: config.get('outerBorder.runningColor'), 
-        isWholeLine: true 
+    let outerWidth = `0 0 0 ${thickness}`;
+    if (position === 'right') outerWidth = `0 ${thickness} 0 0`;
+    if (position === 'top') outerWidth = `${thickness} 0 0 0`;
+    if (position === 'bottom') outerWidth = `0 0 ${thickness} 0`;
+
+    const baseOpt = (color: string) => ({
+        backgroundColor: color,
+        isWholeLine: true,
+        rangeBehavior: vscode.DecorationRangeBehavior.OpenOpen
     });
-    cellSuccessDec = vscode.window.createTextEditorDecorationType({ 
-        borderWidth: outerBorderWidth, 
-        borderStyle: 'solid', 
-        borderColor: config.get('outerBorder.successColor'), 
-        isWholeLine: true 
+
+    successBgDec = vscode.window.createTextEditorDecorationType(baseOpt(config.get('background.successColor')!));
+    errorBgDec = vscode.window.createTextEditorDecorationType(baseOpt(config.get('background.errorColor')!));
+    flashDec = vscode.window.createTextEditorDecorationType(baseOpt(config.get('flash.color')!));
+
+    cmdRunningDec = vscode.window.createTextEditorDecorationType({
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        borderColor: config.get('innerBorder.runningColor'),
+        isWholeLine: true
+    });
+    cmdSuccessDec = vscode.window.createTextEditorDecorationType({
+        borderWidth: '1px',
+        borderStyle: 'solid',
+        borderColor: config.get('innerBorder.successColor'),
+        isWholeLine: true
+    });
+    cellRunningDec = vscode.window.createTextEditorDecorationType({
+        borderWidth: outerWidth,
+        borderStyle: 'solid',
+        borderColor: config.get('outerBorder.runningColor'),
+        isWholeLine: true
+    });
+    cellSuccessDec = vscode.window.createTextEditorDecorationType({
+        borderWidth: outerWidth,
+        borderStyle: 'solid',
+        borderColor: config.get('outerBorder.successColor'),
+        isWholeLine: true
     });
 
     scratchpadDec = vscode.window.createTextEditorDecorationType({
-        borderStyle: config.get('scratchpad.borderStyle'),
-        borderWidth: config.get('scratchpad.borderWidth'),
+        borderStyle: config.get('scratchpad.borderStyle', 'dashed'),
+        borderWidth: `${config.get('scratchpad.borderWidth', '0.5px')} 0px ${config.get('scratchpad.borderWidth', '0.5px')} 6px`,
         borderColor: config.get('scratchpad.borderColor'),
         backgroundColor: config.get('scratchpad.backgroundColor'),
         isWholeLine: true
     });
+}
+
+function disposeAllDecorations() {
+    [successBgDec, errorBgDec, flashDec, cmdRunningDec, cmdSuccessDec, cellRunningDec, cellSuccessDec, scratchpadDec]
+        .forEach(d => d?.dispose());
+}
+
+function updateLayoutSettings() {
+    const config = vscode.workspace.getConfiguration('jupyterEnhancements');
+    const vscodeConfig = vscode.workspace.getConfiguration();
+
+    if (config.get<boolean>('kernel.optimizeStartup', true)) {
+        try {
+            const pythonConfig = vscode.workspace.getConfiguration('python');
+            pythonConfig.update('terminal.activateEnvironment', false, vscode.ConfigurationTarget.Global);
+        } catch (e) { }
+    }
+
+    const enableCompact = config.get<boolean>('layout.enableCompactView', false);
+    if (enableCompact) {
+        const settings = {
+            "notebook.cellExecutionTimeVerbosity": "verbose",
+            "notebook.consolidatedRunButton": true,
+            "notebook.lineNumbers": "on",
+            "notebook.showCellStatusBar": "visibleAfterExecute"
+        };
+        for (const [key, value] of Object.entries(settings)) {
+            try {
+                vscodeConfig.update(key, value, vscode.ConfigurationTarget.Global);
+            } catch (e) { }
+        }
+    }
+}
+
+export function deactivate() {
+    disposeAllDecorations();
+    activeAnimations.forEach(interval => clearInterval(interval));
+    clearAllAnimations();
 }
