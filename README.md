@@ -1,170 +1,313 @@
 <div align="center">
+  <img src="icon.png" alt="Jupyter Enhancements icon" width="92" />
 
-# ⚡ Jupyter Enhancements ⚡
+  # Jupyter Enhancements
 
-**Supercharge your VS Code Jupyter Notebooks with visual feedback, smart execution controls, and a power-user toolbar.**
+  **Know what's running. Move through notebooks faster. Make VS Code feel more like JupyterLab.**
 
-[![Version](https://img.shields.io/visual-studio-marketplace/v/yimmas.jupyter-enhancements)](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements)
-[![Installs](https://img.shields.io/visual-studio-marketplace/i/yimmas.jupyter-enhancements)](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements)
-[![License](https://img.shields.io/github/license/yimmas-yimmas/jupyter-enhancements)](https://github.com/yimmas-yimmas/jupyter-enhancements)
+  Visual execution feedback · smarter cell actions · scratchpads · compact layouts
 
+  [![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/yimmas.jupyter-enhancements?label=Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements)
+  [![Installs](https://img.shields.io/visual-studio-marketplace/i/yimmas.jupyter-enhancements?label=Installs)](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements)
+  [![Build & tests](https://github.com/yimmas-yimmas/jupyter-enhancements/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/yimmas-yimmas/jupyter-enhancements/actions/workflows/verify.yml)
+  [![VS Code](https://img.shields.io/badge/VS_Code-%E2%89%A5_1.96-007ACC?logo=visualstudiocode&logoColor=white)](https://code.visualstudio.com/)
+
+  [**Install from Marketplace**](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements) ·
+  [**Browse source**](https://github.com/yimmas-yimmas/jupyter-enhancements) ·
+  [**Report an issue**](https://github.com/yimmas-yimmas/jupyter-enhancements/issues)
 </div>
 
 ---
 
-## 🚀 Overview
+### At a glance
 
-**Jupyter Enhancements** transforms the standard Jupyter experience in VS Code. It adds immediate visual cues (flashes, borders, backgrounds) so you know exactly which cell is running, which failed, and which succeeded.
+| See what happens | Work faster | Use less space |
+|:---|:---|:---|
+| 🔵 Running-cell animation | ▶️ Run Current & Below | 📐 Balanced Compact layout |
+| 🟢 Success / 🔴 failure feedback | 🧪 Run selections in scratchpads | ⏱️ Native, inline, or hidden timing |
+| 🟠 Debugger breakpoint highlighting | ✂️ Cell editing & clipboard tools | ⚙️ Reversible notebook preferences |
 
-It also introduces a **"Power Toolbar"** floating over your cells, giving you one-click access to splitting, merging, scratchpads, and clipboard operations that are usually hidden in sub-menus.
+**Made for VS Code's Jupyter notebooks (`.ipynb`).** This extension complements the [Microsoft Jupyter extension](https://marketplace.visualstudio.com/items?itemName=ms-toolsai.jupyter); it is not a standalone notebook kernel.
 
-## ✨ Key Features
+**In this guide:** [Get started](#get-started) · [Execution indicators](#execution-indicators) · [Cell toolbar](#cell-toolbar--commands) · [Scratchpads](#scratchpads) · [Debugger](#debugger-visuals) · [Compact layout](#balanced-compact-layout) · [Execution timing](#execution-time-display) · [Settings](#settings-reference) · [FAQ](#troubleshooting--faq)
 
-### 1. 🎨 Visual Feedback System
-Never guess the state of your cells again.
-*   **Running:** A distinct **Blue Border** (customizable thickness and position) appears while code executes.
-*   **Success:** A brief **Yellow Flash** and a persistent **Green Border/Background** confirms execution.
-*   **Error:** A **Red Background** immediately highlights failed cells.
-*   **Debug Cell:** A pulsing **Blue Border** follows the debugged notebook cell until a breakpoint; an **Amber Border** marks a paused debugger. Continue or Step resumes blue. If the debugger identifies a matching notebook-cell source, the paused line receives a subtle amber tint.
+## Get started
 
-### 2. 🛠️ The "Power Toolbar"
-A floating menu appears on the active cell with essential tools sorted for speed:
-*   ▶️ **Run & Select Next:** Execute and immediately move to the next cell.
-*   ✂️ **Split & Merge:** Split a cell at the cursor or merge with the one below instantly.
-*   🗑️ **Clear Output:** Instantly wipe the output of the current cell.
-*   🧪 **Scratchpad:** Run the selected text in a new temporary cell (Above or Below) without breaking your flow.
-*   👁️ **Toggle Output:** Collapse/Expand cell output.
-*   ⬆️⬇️ **Move & Copy:** Move cells up/down, copy, paste, or duplicate with one click.
+1. Install [**Jupyter Enhancements** from the VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements).
+2. Make sure the **Jupyter** extension is installed and your notebook has an available Python/Jupyter kernel.
+3. Open a `.ipynb` file in VS Code.
+4. Run a code cell. Watch its blue indicator while it runs, followed by success/error feedback.
+5. Look at the **cell toolbar** (including its overflow menu) for execution, output, editing, and scratchpad actions.
 
-### 3. 🧪 Smart Scratchpad
-Need to debug a variable without adding a mess to your notebook?
-*   Highlight code -> Press `F11` (or use the toolbar).
-*   It executes in a temporary "Scratchpad" cell with a dashed border.
-*   Perfect for quick data inspection.
+> **Try this first:** Select a few lines of Python inside a notebook code cell, then press **F11** to execute that selection in a scratchpad cell.
 
-### 4. ⚡ Performance & Layout
-*   **Balanced Compact Layout:** JupyterLab-inspired notebook density using native VS Code settings; keeps all cell toolbar actions and colored running/debugging effects, and restores previous user settings when turned off.
-*   **Optimized Startup:** Skips unnecessary terminal activation steps for faster kernel loading on Windows/Conda.
+Use **Ctrl+Shift+P** (macOS: **Cmd+Shift+P**) and search for **Jupyter Enhancements** to discover the layout and timing commands.
+
+## Execution indicators
+
+No need to hunt for a tiny execution icon: notebook cells give immediate visual feedback.
+
+| State | Indicator | Meaning |
+|:---|:---|:---|
+| **Running** | 🔵 Animated blue border/side indicator | The cell is executing. The animation is tied to execution state—not a fixed 10-second timeout. |
+| **Success** | 🟢 Green border/background; optional short flash | The cell completed successfully. |
+| **Error** | 🔴 Red background | Execution reported failure. |
+| **Debugger paused** | 🟠 Amber border; optional line tint | A Jupyter **Debug Cell** session stopped at a breakpoint or pause event. |
+
+The **inner** (code-area) and **outer** (side) indicators can be enabled separately, recolored, and configured to persist after successful execution. Backgrounds and the brief success flash are also configurable.
+
+### Run Current & Below
+
+Choose **Run Current & Below** from the cell toolbar or cell context menu.
+
+- Runs the current code cell and subsequent code cells **in order**.
+- Skips empty and non-code cells.
+- Scrolls to an executing cell **when it moves outside the viewport**, without forcing notebook edit mode or changing your text selection.
+- Stops the sequence if a cell execution reports failure.
+
+**Output visibility:** Scrolling follows the **running code cell**, not a growing output area. A large table or plot may extend below the screen.
+
+### Run & Select Next
+
+Choose **Run & Select Next** to execute the current cell and move selection to the next cell. This uses VS Code's native notebook action.
+
+## Cell toolbar & commands
+
+The extension adds commands to the **Jupyter notebook cell toolbar**. Depending on available width and your VS Code settings, some icons may appear under **… (More Actions)**. Several commands are also available by right-clicking a cell or opening the Command Palette.
+
+| Action | What it does |
+|:---|:---|
+| **Run Current & Below** | Execute this cell and following code cells sequentially. |
+| **Run & Select Next** | Execute and select the next cell. |
+| **Run Selection in Scratchpad (Above / Below)** | Execute selected code—or the source cell's code—in a nearby scratchpad. |
+| **Toggle Output** | Collapse or expand the cell output. |
+| **Clear Cell Output** | Remove the cell's existing output. |
+| **Split Cell at Cursor** | Split a code cell at the caret. |
+| **Merge Cells** | Merge selected cells (or the current cell with the next one). |
+| **Move Cell Up / Down** | Reorder cells. |
+| **Copy Cell / Cut Cell / Paste Cell** | Work with cells using notebook clipboard actions. |
+| **Duplicate Cell (Copy Down)** | Create a copy below the current cell. |
+
+These are **not** changes to Python syntax or kernel execution semantics; they are notebook/editor commands. All code cells remain editable in the normal VS Code editor.
+
+## Scratchpads
+
+Scratchpads are useful for checking variables, testing a short expression, or exploring data without rewriting your original code cell.
+
+**Run a selection**
+
+1. Click inside a notebook **code cell** and select the code to test.
+2. Press **F11**, or choose **Run Selection in Scratchpad** from the editor/context menu.
+3. The extension creates or updates an adjacent scratchpad cell and runs the selected code.
+
+**Run above or below**
+
+- Use **Run Selection in Scratchpad (Above)** or **(Below)** from the cell toolbar.
+- The `jupyterEnhancements.scratchpad.insertPosition` preference sets the default insertion side when a side isn't explicitly chosen.
+- Scratchpad cells have a distinctive **dashed border** by default (style, width, and color are customizable).
+
+If you use a cell-toolbar Above/Below action without a text selection, it uses that cell's code. Scratchpads are regular notebook cells—not an isolated Python environment—so code runs against the selected kernel.
+
+## Debugger visuals
+
+While using Jupyter's **Debug Cell** feature, execution highlighting follows debugger events:
+
+**🔵 Running → 🟠 Paused at breakpoint → 🔵 Continue / Step → Finished**
+
+- When the debugger pauses, the relevant notebook cell gets an **amber border**.
+- The paused line receives a subtle tint **only when the debugger reports a source location matching that notebook cell**. Source locations in external Python files aren't guessed.
+- The visual indicator is cleared when debugging ends.
+
+The implementation observes debug adapter events; it **does not** animate the exact Python statement currently executing during an ordinary cell run. Breakpoints, stepping, and kernel debug support still depend on VS Code's Jupyter/Python debugging tools.
+
+## Balanced Compact layout
+
+Want a denser, JupyterLab-inspired notebook without losing your cell toolbar or visual indicators?
+
+**Enable it:** Open the Command Palette and run **Jupyter Enhancements: Enable Balanced Compact Notebook Layout**.
+
+**Undo it:** Run **Jupyter Enhancements: Restore Previous Notebook Layout**.
+
+Or open **Settings → Extensions → Jupyter Enhancements** and choose **Layout Profile → Balanced Compact** or **Standard**.
+
+| Feature | Standard | Balanced Compact |
+|:---|:---|:---|
+| Layout | Your existing VS Code notebook settings | Native compact notebook view |
+| Code typography | Your existing values | 13px font, 19px line height |
+| Output typography | Your existing values | 12px font, 18px line height |
+| Insert-cell toolbar | Your existing placement | Notebook toolbar |
+| Cell toolbar | Preserved | **Preserved** |
+| Running/debug indicators | Preserved | **Preserved** |
+| Native cell status row | Your existing setting | `visibleAfterExecute` when execution-time mode is **Native** |
+
+Balanced Compact uses **supported VS Code notebook settings**, not injected CSS. It cannot control every internal pixel of notebook cell padding or precisely reproduce JupyterLab.
+
+**Reversible by design:** The extension saves notebook **user-level** values before changing them, remembers them across restarts, and restores settings it still owns when Standard is selected. It avoids undoing later manual edits. Workspace or folder overrides can take precedence. **Restore your preferred layout before uninstalling** if you want these user-level changes reverted.
+
+> If you previously enabled `jupyterEnhancements.layout.enableCompactView`, that legacy setting remains recognized for compatibility. New setups should use `jupyterEnhancements.layout.profile` instead.
+
+## Execution-time display
+
+Choose exactly how much execution information each cell shows:
+
+| Mode | Native status row | Inline code indicator | Ideal for |
+|:---|:---:|:---:|:---|
+| **Native** (default) | ✅ | — | VS Code's normal execution-time/status UI |
+| **Compact** | Hidden | ✅ | Seeing status and duration **without adding a separate row** |
+| **Hidden** | Hidden | — | Minimal notebook chrome (colored indicators still work) |
+
+**Switch instantly:** **Ctrl+Shift+P** → **Jupyter Enhancements: Choose Execution Time Display** → **Native status bar**, **Compact indicator**, or **Hidden**.
+
+You can also select `executionTime.display` in Jupyter Enhancements settings.
+
+Compact renders an editor decoration **after the first nonempty code line**—for example, `● Running · 2.40s`, `✓ 420ms`, or `✕ 500ms`. It **does not edit source code**, place a new status row, or steal cursor focus. Long lines can push the label farther right. Some kernels do not provide usable timing timestamps; the extension shows the known state instead of fabricating a duration.
+
+**Layout and timing are independent.** A popular combination is **Balanced Compact + Compact execution time**. Switching back to Native restores the applicable native status-bar behavior; explicit workspace or user preferences may need review if they conflict.
+
+### Quick settings example
+
+Open **Preferences: Open User Settings (JSON)** and add these properties to your existing settings object:
+
+```json
+{
+  "jupyterEnhancements.layout.profile": "balancedCompact",
+  "jupyterEnhancements.executionTime.display": "compact"
+}
+```
+
+To return to native execution timing, change `compact` to `native`. To return to your original notebook layout, set `layout.profile` to `standard` (or use the restore command).
+
+## Settings reference
+
+Search **Jupyter Enhancements** in VS Code Settings. Keys below are shown in full so you can paste them into `settings.json`.
+
+### Layout, execution, and debugger
+
+| Setting | Default | Purpose |
+|:---|:---|:---|
+| `jupyterEnhancements.layout.profile` | `standard` | `standard` or `balancedCompact` |
+| `jupyterEnhancements.executionTime.display` | `native` | `native`, `compact`, or `hidden` |
+| `jupyterEnhancements.debug.enable` | `true` | Enable blue/amber debugger visuals |
+| `jupyterEnhancements.debug.pausedBorderColor` | `#E5A000` | Paused-cell border |
+| `jupyterEnhancements.debug.pausedLineColor` | `#E5A00033` | Matching paused-line tint |
+
+### Running, success, and error visuals
+
+| Setting | Default | Purpose |
+|:---|:---|:---|
+| `jupyterEnhancements.innerBorder.enable` | `true` | Show a border around the running code area |
+| `jupyterEnhancements.innerBorder.persist` | `false` | Keep inner border after success |
+| `jupyterEnhancements.innerBorder.runningColor` | `#0078FF` | Inner running color |
+| `jupyterEnhancements.innerBorder.successColor` | `#006400` | Inner success color |
+| `jupyterEnhancements.outerBorder.enable` | `true` | Show outer running indicator |
+| `jupyterEnhancements.outerBorder.position` | `left` | `left`, `right`, `top`, or `bottom` |
+| `jupyterEnhancements.outerBorder.thickness` | `6px` | Outer indicator width |
+| `jupyterEnhancements.outerBorder.persist` | `true` | Keep outer indicator after success |
+| `jupyterEnhancements.outerBorder.runningColor` | `#0078FF` | Outer running color |
+| `jupyterEnhancements.outerBorder.successColor` | `#006400` | Outer success color |
+| `jupyterEnhancements.background.enable` | `true` | Enable success/error backgrounds |
+| `jupyterEnhancements.background.successColor` | `#90EE9033` | Success background |
+| `jupyterEnhancements.background.errorColor` | `#FF000033` | Failure background |
+| `jupyterEnhancements.flash.enable` | `true` | Brief flash on success |
+| `jupyterEnhancements.flash.color` | `#FFFF0066` | Success flash color |
+| `jupyterEnhancements.general.flashDuration` | `300` | Flash duration in milliseconds |
+
+### Scratchpad
+
+| Setting | Default | Purpose |
+|:---|:---|:---|
+| `jupyterEnhancements.scratchpad.insertPosition` | `below` | Default: `above` or `below` |
+| `jupyterEnhancements.scratchpad.borderStyle` | `dashed` | `solid` / `dashed` / `dotted` / `double` / `groove` |
+| `jupyterEnhancements.scratchpad.borderWidth` | `0.5px` | Scratchpad border width |
+| `jupyterEnhancements.scratchpad.borderColor` | `#80808080` | Scratchpad border color |
+| `jupyterEnhancements.scratchpad.backgroundColor` | `#FFFFFF0D` | Scratchpad cell tint |
+
+**Advanced / legacy:** `jupyterEnhancements.kernel.optimizeStartup` is **off** by default; enabling it changes the global Python terminal-environment-activation preference. The older `layout.enableCompactView` setting is deprecated in favor of `layout.profile`. Some legacy settings remain exposed in the extension manifest for compatibility; for example, `kernel.pythonPath` and `layout.hideCellToolbar` are **not currently applied by the extension's code** and should not be relied upon.
+
+### Keybinding
+
+| Keys | Context | Action |
+|:---|:---|:---|
+| **F11** | Text editor focused inside a notebook | Run selected code in a scratchpad |
+
+Use **Keyboard Shortcuts** in VS Code to remap the shortcut if F11 conflicts with another command on your system.
+
+## Troubleshooting & FAQ
+
+<details>
+<summary><strong>Compact or Hidden is selected, but a separate execution-information row remains</strong></summary>
+
+1. Open **Preferences: Open User Settings (JSON)** and check that `notebook.showCellStatusBar` is `"hidden"`, with no duplicate entries.
+2. Open your workspace's `.vscode/settings.json` and check for an override of the same setting.
+3. Also check whether `notebook.cellExecutionTimeVerbosity` is set to `"verbose"`—that setting controls the detail of native timing text but **does not itself hide the row**.
+4. Use **Developer: Reload Window**, then reopen the notebook.
+
+The layout manager attempts to honor user/workspace overrides, but another extension or a conflicting setting can affect the rendered notebook UI.
+
+</details>
+
+<details>
+<summary><strong>Compact timing text is missing, or no duration appears</strong></summary>
+
+Make sure `jupyterEnhancements.executionTime.display` is `"compact"` and run a notebook code cell. Timing depends on execution information reported by VS Code's notebook provider. If a duration isn't available, the extension won't invent one. The inline text appears after the first nonempty source line and may be off-screen horizontally when that line is long.
+
+</details>
+
+<details>
+<summary><strong>F11 doesn't run my selection</strong></summary>
+
+Click directly inside the editor of a **Jupyter code cell**, select nonempty code, and try again. You can also select **Run Selection in Scratchpad** from the editor context menu. F11 may be intercepted by a conflicting keybinding.
+
+</details>
+
+<details>
+<summary><strong>Some toolbar buttons are missing</strong></summary>
+
+Check the cell toolbar's **…** overflow menu and ensure you're working in a Jupyter `.ipynb` notebook. The visible number of buttons depends on window width and VS Code's notebook toolbar configuration.
+
+</details>
+
+<details>
+<summary><strong>Debugger highlighting isn't showing</strong></summary>
+
+Use Jupyter's **Debug Cell** with a working debugger-capable kernel and enable `jupyterEnhancements.debug.enable`. Amber pause indicators depend on debugger events, and exact paused-line tinting requires a source location that matches the cell.
+
+</details>
+
+<details>
+<summary><strong>How do I restore my previous notebook appearance?</strong></summary>
+
+Run **Jupyter Enhancements: Restore Previous Notebook Layout**, then choose **Native status bar** in **Choose Execution Time Display**. The extension restores previously saved settings it still controls and leaves manually modified values alone. Do this before uninstalling if you want to reverse profile changes.
+
+</details>
+
+## For contributors
+
+The repository uses TypeScript and VS Code's stable extension API. To try the source in an **Extension Development Host**:
+
+```bash
+npm ci
+npm run compile
+```
+
+Press **F5** in VS Code to open the development host. To run the fast, VS Code-independent state tests:
+
+```bash
+node --test tests/*.test.cjs
+```
+
+Key files: `src/extension.ts` (notebook commands and visuals), `src/notebookLayout.ts` (reversible VS Code preferences), `src/executionTiming.ts` (inline timing), `src/executionState.ts` / `src/debugVisualState.ts` (state transitions), and `tests/` (regressions).
+
+For changes, issues, and suggestions, visit [GitHub Issues](https://github.com/yimmas-yimmas/jupyter-enhancements/issues).
 
 ---
 
-## ⚙️ Configuration & Settings
+<div align="center">
 
-You can customize almost every aspect of this extension in **File > Preferences > Settings** (search for `Jupyter Enhancements`).
+**A little less notebook clutter. A lot more clarity.**
 
-### 🎨 Visual Customization
-| Setting | Default | Description |
-| :--- | :--- | :--- |
-| `flash.enable` | `true` | Enable the flash effect on success. |
-| `flash.color` | `#FFFF0066` | Color of the success flash. |
-| `flashDuration` | `300` | How long the flash lasts (ms). |
-| `background.enable` | `true` | Enable background tints for Success/Error. |
-| `outerBorder.enable` | `true` | Enable the thick indicator bar on the side. |
-| `outerBorder.position`| `left` | Position of the bar (left, right, top, bottom). |
-| `outerBorder.persist` | `true` | Keep the green bar visible after success. |
+[Marketplace](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements) · [Source](https://github.com/yimmas-yimmas/jupyter-enhancements) · [Issues](https://github.com/yimmas-yimmas/jupyter-enhancements/issues)
 
-### 🐞 Jupyter Debugger Settings
-| Setting | Default | Description |
-| :--- | :--- | :--- |
-| `debug.enable` | `true` | Show blue running and amber paused visuals for Jupyter **Debug Cell** sessions. |
-| `debug.pausedBorderColor` | `#E5A000` | Border color while the debugger is stopped. |
-| `debug.pausedLineColor` | `#E5A00033` | Subtle tint for a paused line **only when the source maps to that notebook cell**. |
+<sub>Built for notebook workflows in VS Code · Maintained by Yimmas</sub>
 
-These debug visuals depend on Jupyter's Debug Adapter Protocol events. They don't step through arbitrary Python statements during normal notebook execution; output visibility and ordinary editor selection are unchanged.
-
-### 🧪 Scratchpad Settings
-| Setting | Default | Description |
-| :--- | :--- | :--- |
-| `scratchpad.insertPosition` | `below` | Where to spawn the scratchpad (`above` or `below`). |
-| `scratchpad.borderStyle` | `dashed` | Style of the scratchpad cell border. |
-| `scratchpad.borderColor` | `#80808080` | Color of the scratchpad border. |
-
-### ⏱️ Execution-time display (optional)
-
-Use **Settings → Jupyter Enhancements: Execution Time Display** or Command Palette:
-**Jupyter Enhancements: Choose Execution Time Display**.
-
-| Display | Behavior |
-| :--- | :--- |
-| **Native** (default) | Keep the normal VS Code cell status bar, including execution timing. Balanced Compact uses `visibleAfterExecute` as before. |
-| **Compact** | Hide the extra status-bar row; append a subtle execution status and duration at the end of the **first nonempty code line**. Running durations update about every 500 ms; completed durations use Jupyter execution timestamps where available. |
-| **Hidden** | Hide the native cell status bar and all inline timing text. Existing running/success/error/debug borders remain active. |
-
-**Compact** uses a native VS Code text-editor decoration, not source-code edits, toolbar changes, CSS injection or an extra row. Very long code lines may place the indicator farther to the right (the VS Code API doesn't guarantee positioning at the cell's top-right edge). Execution timing may be unavailable for some kernels; the indicator will show the cell's reported state without inventing an elapsed time.
-
-The mode picker now updates the **effective setting scope** (user, workspace, or notebook folder). It also temporarily hides existing workspace/folder-level cell-status-bar overrides in Compact or Hidden modes and restores them when Native is selected. The extension shows a confirmation or warning if a conflicting setting prevents the switch from taking effect. The extension remembers the previous user-global `notebook.showCellStatusBar` value. Switching back to Native restores the user's original status-bar preference when Standard layout is selected, or uses Balanced Compact's normal `visibleAfterExecute` behavior while Balanced Compact remains active. Manually changed settings are not overwritten. Workspace-specific status-bar settings can override user settings.
-
-### 📐 Balanced Compact — Reversible notebook layout
-
-1. In VS Code 1.142.0 open **Settings** and search for `Jupyter Enhancements: Layout Profile`, then select **Balanced Compact**.
-2. Alternatively, use Command Palette: **Jupyter Enhancements: Enable Balanced Compact Notebook Layout**.
-3. To undo, select **Standard** or run **Jupyter Enhancements: Restore Previous Notebook Layout**.
-
-The profile changes the following user notebook preferences when execution-time display is set to **Native** (the default):
-
-| Notebook setting | Balanced Compact |
-| :--- | :--- |
-| `notebook.compactView` | `true` |
-| `notebook.insertToolbarLocation` | `notebookToolbar` |
-| `notebook.showCellStatusBar` | `visibleAfterExecute` |
-| `notebook.editorOptionsCustomizations.editor.fontSize` | `13` |
-| `notebook.editorOptionsCustomizations.editor.lineHeight` | `19` |
-| `notebook.output.fontSize` | `12` |
-| `notebook.output.lineHeight` | `18` |
-
-The restore action remembers existing **user** notebook preferences, removes previously absent overrides, and preserves unrelated editor customizations and later manual edits. The snapshot is retained across VS Code restarts. Enable the profile intentionally; it changes **user-global** notebook settings for all VS Code notebooks (unless a workspace overrides them). Use **Restore Previous Notebook Layout before uninstalling** if you want to revert the settings.
-
-This is the tightest layout reliably exposed by standard VS Code notebook APIs; exact cell-container padding and JupyterLab spacing are not configurable without unsupported UI/CSS injection. Cell title toolbars, Run/Copy/Paste actions, selection behavior, execution animations and debugger decorations are not changed.
-
-### 🖥️ Layout & Kernel
-| Setting | Default | Description |
-| :--- | :--- | :--- |
-| `layout.profile` | `standard` | Choose `balancedCompact` for tighter notebooks, or `standard` to restore previous preferences. |
-| `executionTime.display` | `native` | `native` / `compact` / `hidden`; status-bar preferences are reversible. |
-| `layout.enableCompactView` | `false` | Deprecated alias for Balanced Compact if `layout.profile` is not explicitly set. |
-| `layout.hideCellToolbar` | `false` | Hides the default floating toolbar if you prefer a clean look. |
-| `kernel.optimizeStartup` | `true` | Speeds up startup on Windows/Conda environments. |
-
----
-
-## 🎨 Default Color Reference
-
-If you want to revert your customizations to the original vibrant theme, here are the default hex codes:
-
-**Status Colors:**
-*   **Success Background:** `#90EE9033` (Light Green, Transparent)
-*   **Error Background:** `#FF000033` (Red, Transparent)
-*   **Success Flash:** `#FFFF0066` (Yellow, Semi-transparent)
-
-**Borders (Indicators):**
-*   **Running Color:** `#0078FF` (Vibrant Blue)
-*   **Success Color:** `#006400` (Dark Green)
-*   **Scratchpad Border:** `#80808080` (Grey, Semi-transparent)
-
----
-
-## ⌨️ Commands & Keybindings
-
-| Command | Keybinding | Action |
-| :--- | :--- | :--- |
-| `Run Selection in Scratchpad` | `F11` | Runs selected text in a new temp cell. |
-| `Run Current & Below` | - | Runs the active cell and all cells below it. |
-| `Run & Select Next` | - | Standard Jupyter execution behavior. |
-| `Split Cell at Cursor` | - | Splits the cell at your cursor position. |
-| `Merge Cells` | - | Merges current cell with the one below. |
-
----
-
-## 📥 Installation
-
-1.  Open **VS Code**.
-2.  Go to the **Extensions** view (`Ctrl+Shift+X`).
-3.  Search for **"Jupyter Enhancements"**.
-4.  Click **Install**.
-5.  Open any `.ipynb` file to see the new toolbar and effects!
-6. Optional but Recommended : Ctrl + Shift + P +  >Developer:Relaod Window 
-
----
-
-**Enjoy a faster, more visual Jupyter experience!**  
-*Maintained by Yimmas*
+</div>
