@@ -148,8 +148,8 @@ export function activate(context: vscode.ExtensionContext) {
                 placeHolder: 'How should notebook execution time be displayed?'
             });
             if (!selected) return;
-            await vscode.workspace.getConfiguration('jupyterEnhancements').update(
-                'executionTime.display', selected.value, vscode.ConfigurationTarget.Global
+            await layoutProfile.selectExecutionDisplay(
+                selected.value as 'native' | 'compact' | 'hidden'
             );
         }),
         vscode.commands.registerCommand('jupyter-enhancements.runInScratchpad', cell => runScratchpadHandler(cell)),
