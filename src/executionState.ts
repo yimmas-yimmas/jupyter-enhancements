@@ -24,6 +24,10 @@ export function classifyExecutionTransition(
         (next.start !== previous.start || next.order !== previous.order)) return 'finished';
 
     if (next.start > 0 && next.start !== previous.start) return 'started';
-    if (next.order > 0 && next.order !== previous.order && next.end === previous.end) return 'started';
+    // An execution-order update alone is not evidence that a code cell is
+    // executing. Interactive widget callbacks can alter notebook bookkeeping
+    // without creating a corresponding cell completion event. Animating here
+    // could otherwise leave the cell flashing indefinitely.
+    // Require a changed execution start timestamp for a new running state.
     return 'none';
 }
