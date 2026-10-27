@@ -35,6 +35,77 @@ interface NotebookDebugVisual {
 const notebookDebugSessions = new Map<string, NotebookDebugVisual>();
 const completedDebugSessionIds = new Set<string>();
 
+// Optional public Jupyter kernel-status API. Widget callbacks run on the same
+// kernel without being ordinary notebook-cell executions. Returning to idle
+// is a reliable signal to clear any animation lacking a completion summary.
+interface JupyterKernelStatus {
+    readonly status: string;
+    onDidChangeStatus: vscode.Event<string>;
+}
+interface JupyterKernelApi {
+    kernels: {
+        getKernel(uri: vscode.Uri): Thenable<JupyterKernelStatus | undefined>;
+    };
+}
+const notebookKernelWatchers = new Map<string, { kernel: JupyterKernelStatus; listener: vscode.Disposable }>();
+const kernelWatcherChecks = new Set<string>();
+const lastKernelWatcherCheck = new Map<string, number>();
+
+function stopIdleNotebookAnimations(notebookUri: string, kernel: JupyterKernelStatus) {
+    if (kernel.status !== 'idle' || notebookKernelWatchers.get(notebookUri)?.kernel !== kernel) return;
+    const notebook = vscode.workspace.notebookDocuments.find(doc => doc.uri.toString() === notebookUri);
+    if (!notebook) return;
+    for (const cell of notebook.getCells()) {
+        const uri = cell.document.uri.toString();
+        if (!currentlyAnimatingUris.has(uri)) continue;
+        stopRunningVisuals(uri);
+        restoreDecorationForCell(cell);
+    }
+}
+
+function disposeNotebookKernelWatcher(notebookUri: string) {
+    notebookKernelWatchers.get(notebookUri)?.listener.dispose();
+    notebookKernelWatchers.delete(notebookUri);
+    lastKernelWatcherCheck.delete(notebookUri);
+}
+
+/** Reconnect after a kernel starts, restarts, or switches. Do not execute kernel code. */
+function watchNotebookKernel(notebook: vscode.NotebookDocument) {
+    if (notebook.notebookType !== 'jupyter-notebook') return;
+    const key = notebook.uri.toString();
+    if (kernelWatcherChecks.has(key) || Date.now() - (lastKernelWatcherCheck.get(key) ?? 0) < 1200) return;
+    lastKernelWatcherCheck.set(key, Date.now());
+    kernelWatcherChecks.add(key);
+
+    void (async () => {
+        const extension = vscode.extensions.getExtension<JupyterKernelApi>('ms-toolsai.jupyter');
+        if (!extension) return;
+        const api = extension.isActive ? extension.exports : await extension.activate();
+        const kernel = await api?.kernels?.getKernel(notebook.uri);
+        if (!kernel || !vscode.workspace.notebookDocuments.some(doc => doc.uri.toString() === key)) return;
+
+        const previous = notebookKernelWatchers.get(key);
+        if (previous?.kernel !== kernel) {
+            previous?.listener.dispose();
+            const listener = kernel.onDidChangeStatus(status => {
+                if (status === 'idle') {
+                    // A queued cell can immediately make the kernel busy again;
+                    // verify the current status rather than trusting an old event.
+                    setTimeout(() => stopIdleNotebookAnimations(key, kernel), 150);
+                }
+            });
+            notebookKernelWatchers.set(key, { kernel, listener });
+        }
+        // A callback can already be idle when the event/summary reaches us.
+        // Give the next real cell time to make the kernel busy first.
+        if (kernel.status === 'idle') {
+            setTimeout(() => stopIdleNotebookAnimations(key, kernel), 800);
+        }
+    })().catch(error => {
+        console.debug('Jupyter Enhancements: kernel status monitoring unavailable:', error);
+    }).finally(() => kernelWatcherChecks.delete(key));
+}
+
 export function activate(context: vscode.ExtensionContext) {
     const layoutProfile = new NotebookLayoutProfileManager(context);
     void layoutProfile.enqueue();
@@ -43,20 +114,22 @@ export function activate(context: vscode.ExtensionContext) {
     clearAllAnimations();
 
     for (const notebook of vscode.workspace.notebookDocuments) {
-        if (notebook.notebookType === 'jupyter-notebook') initKnownStates(notebook);
+        if (notebook.notebookType === 'jupyter-notebook') { initKnownStates(notebook); watchNotebookKernel(notebook); }
     }
 
     context.subscriptions.push(
         vscode.workspace.onDidOpenNotebookDocument(notebook => {
-            if (notebook.notebookType === 'jupyter-notebook') initKnownStates(notebook);
+            if (notebook.notebookType === 'jupyter-notebook') { initKnownStates(notebook); watchNotebookKernel(notebook); }
         }),
         vscode.workspace.onDidCloseNotebookDocument(notebook => {
             if (notebook.notebookType === 'jupyter-notebook') {
                 for (const cell of notebook.getCells()) cleanupCell(cell.document.uri.toString());
+                disposeNotebookKernelWatcher(notebook.uri.toString());
             }
         }),
         vscode.workspace.onDidChangeNotebookDocument(event => {
             if (event.notebook.notebookType !== 'jupyter-notebook') return;
+            if (event.cellChanges.some(change => change.executionSummary !== undefined)) watchNotebookKernel(event.notebook);
             for (const change of event.contentChanges) {
                 for (const removed of change.removedCells) cleanupCell(removed.document.uri.toString());
                 for (const added of change.addedCells) {
@@ -70,7 +143,10 @@ export function activate(context: vscode.ExtensionContext) {
             }
         }),
         vscode.window.onDidChangeActiveNotebookEditor(editor => {
-            if (editor?.notebook.notebookType === 'jupyter-notebook') initKnownStates(editor.notebook);
+            if (editor?.notebook.notebookType === 'jupyter-notebook') {
+                initKnownStates(editor.notebook);
+                watchNotebookKernel(editor.notebook);
+            }
         }),
         vscode.debug.onDidChangeActiveDebugSession(() => restoreAllVisibleDecorations()),
         vscode.debug.onDidStartDebugSession(session => beginNotebookDebugSession(session)),
@@ -239,6 +315,7 @@ function observeCell(cell: vscode.NotebookCell) {
 function globalWatchdog() {
     const editor = vscode.window.activeNotebookEditor;
     if (editor?.notebook.notebookType !== 'jupyter-notebook') return;
+    watchNotebookKernel(editor.notebook);
     for (const cell of editor.notebook.getCells()) {
         if (cell.kind === vscode.NotebookCellKind.Code) observeCell(cell);
     }
@@ -967,6 +1044,8 @@ function updateKernelStartupSetting() {
 }
 
 export function deactivate() {
+    for (const key of notebookKernelWatchers.keys()) disposeNotebookKernelWatcher(key);
+    kernelWatcherChecks.clear();
     notebookDebugSessions.clear();
     completedDebugSessionIds.clear();
     clearFlashTimers();

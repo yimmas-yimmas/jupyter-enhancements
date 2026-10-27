@@ -18,10 +18,19 @@ test('second completion updates the result', () => {
 test('unchanged summaries do not trigger phantom animations', () => {
   assert.equal(transition(state(2, 300, 400, true), state(2, 300, 400, true)), 'none');
 });
-test('widget-triggered order-only changes must not start a phantom animation', () => {
-  assert.equal(transition(state(2, 100, 200, true), state(3, 100, 200, true)), 'none');
-  assert.equal(transition(state(2, 100, 200, true), state(3, 100, 200, undefined)), 'none');
+test('Jupyter run without a start timestamp still animates on a new execution order', () => {
+  assert.equal(transition(state(2, 100, 200, true), state(3, 100, 200, true)), 'started');
+  assert.equal(transition(state(2, 100, 200, true), state(3, 100, 200, undefined)), 'started');
+  // A successful completion with no timing is still handled by the finish rule.
   assert.equal(transition(state(2, 100, 200, true), state(3, 100, 0, undefined)), 'none');
+});
+
+test('order changes never restart animations when the execution order is unchanged', () => {
+  assert.equal(transition(state(3, 100, 200, true), state(3, 100, 200, true)), 'none');
+});
+
+test('end timestamp always stops a running cell even if execution order changed', () => {
+  assert.equal(transition(state(2, 100, 200, true), state(3, 100, 300, true)), 'finished');
 });
 
 test('normal new cell execution still starts after a new start timestamp', () => {
