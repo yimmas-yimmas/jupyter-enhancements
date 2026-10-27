@@ -92,7 +92,7 @@ Use **Settings → Jupyter Enhancements: Execution Time Display** or Command Pal
 
 **Compact** uses a native VS Code text-editor decoration, not source-code edits, toolbar changes, CSS injection or an extra row. Very long code lines may place the indicator farther to the right (the VS Code API doesn't guarantee positioning at the cell's top-right edge). Execution timing may be unavailable for some kernels; the indicator will show the cell's reported state without inventing an elapsed time.
 
-The extension remembers the previous user-global `notebook.showCellStatusBar` value. Switching back to Native restores the user's original status-bar preference when Standard layout is selected, or uses Balanced Compact's normal `visibleAfterExecute` behavior while Balanced Compact remains active. Manually changed settings are not overwritten. Workspace-specific status-bar settings can override user settings.
+The mode picker now updates the **effective setting scope** (user, workspace, or notebook folder). It also temporarily hides existing workspace/folder-level cell-status-bar overrides in Compact or Hidden modes and restores them when Native is selected. The extension shows a confirmation or warning if a conflicting setting prevents the switch from taking effect. The extension remembers the previous user-global `notebook.showCellStatusBar` value. Switching back to Native restores the user's original status-bar preference when Standard layout is selected, or uses Balanced Compact's normal `visibleAfterExecute` behavior while Balanced Compact remains active. Manually changed settings are not overwritten. Workspace-specific status-bar settings can override user settings.
 
 ### 📐 Balanced Compact — Reversible notebook layout
 
