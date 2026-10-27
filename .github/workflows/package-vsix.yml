@@ -1,0 +1,71 @@
+name: Package VSIX for Marketplace upload
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "package.json"
+      - "package-lock.json"
+      - ".vscodeignore"
+      - "src/**"
+      - "README.md"
+      - "icon.png"
+      - ".github/workflows/package-vsix.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Use Node.js 22 (required by @vscode/vsce 4)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Compile TypeScript
+        run: npm run compile
+      - name: Run regression tests
+        run: node --test tests/*.test.cjs
+      - name: Determine version
+        id: version
+        shell: bash
+        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+      - name: Package extension
+        shell: bash
+        run: |
+          mkdir -p dist
+          npx --yes @vscode/vsce@4.0.0 package --no-dependencies --out "dist/jupyter-enhancements-${{ steps.version.outputs.version }}.vsix"
+      - name: Verify VSIX contents and checksum
+        shell: bash
+        run: |
+          cd dist
+          file="jupyter-enhancements-${{ steps.version.outputs.version }}.vsix"
+          test -s "$file"
+          unzip -Z -1 "$file" > files.txt
+          grep -Fxq "extension/package.json" files.txt
+          grep -Fxq "extension/README.md" files.txt
+          grep -Fxq "extension/icon.png" files.txt
+          grep -Fxq "extension/out/extension.js" files.txt
+          if grep -Ei '\.(vsix|msg)$|(^|/)(test\.ipynb|package-lock\.json)$' files.txt; then
+            echo "Unexpected development or old package file inside VSIX"
+            exit 1
+          fi
+          sha256sum "$file" > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          echo "VSIX file count: $(wc -l < files.txt)"
+      - name: Upload ready-to-install VSIX
+        uses: actions/upload-artifact@v4
+        with:
+          name: jupyter-enhancements-${{ steps.version.outputs.version }}-vsix
+          path: |
+            dist/*.vsix
+            dist/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 90
