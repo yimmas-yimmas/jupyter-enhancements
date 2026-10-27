@@ -9,3 +9,17 @@ vsc-extension-quickstart.md
 **/*.map
 **/*.ts
 **/.vscode-test.*
+
+# Release packaging hygiene
+**/*.vsix
+**/*.msg
+.github/**
+tests/**
+test.ipynb
+.vscode-test.mjs
+package-lock.json
+package.json_*
+package_b*.json
+**/*_bckup*
+**/*_backup*
+src/**
