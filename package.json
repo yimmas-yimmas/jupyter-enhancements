@@ -242,7 +242,7 @@
         },
         "jupyterEnhancements.kernel.optimizeStartup": {
           "type": "boolean",
-          "default": true,
+          "default": false,
           "description": "Disables 'python.terminal.activateEnvironment' to significantly speed up startup when using Conda on Windows. (Default: True)"
         },
         "jupyterEnhancements.kernel.pythonPath": {
