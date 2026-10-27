@@ -1,23 +1,31 @@
 <div align="center">
   <img src="icon.png" alt="Jupyter Enhancements icon" width="92" />
 
-  # Jupyter Enhancements
+  <h1>Jupyter Enhancements</h1>
 
-  **Know what's running. Move through notebooks faster. Make VS Code feel more like JupyterLab.**
+  <p><strong>Know what's running. Move through notebooks faster. Make VS Code feel more like JupyterLab.</strong></p>
 
-  Visual execution feedback · smarter cell actions · scratchpads · compact layouts
+  <p>Visual execution feedback · smarter cell actions · scratchpads · compact layouts</p>
 
-  [![Visual Studio Marketplace](https://img.shields.io/visual-studio-marketplace/v/yimmas.jupyter-enhancements?label=Marketplace&logo=visualstudiocode)](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements)
-  [![Installs](https://img.shields.io/visual-studio-marketplace/i/yimmas.jupyter-enhancements?label=Installs)](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements)
-  [![Build & tests](https://github.com/yimmas-yimmas/jupyter-enhancements/actions/workflows/verify.yml/badge.svg?branch=main)](https://github.com/yimmas-yimmas/jupyter-enhancements/actions/workflows/verify.yml)
-  [![VS Code](https://img.shields.io/badge/VS_Code-%E2%89%A5_1.96-007ACC?logo=visualstudiocode&logoColor=white)](https://code.visualstudio.com/)
+  <p>
+    <a href="https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements"><img alt="Visual Studio Marketplace version" src="https://img.shields.io/visual-studio-marketplace/v/yimmas.jupyter-enhancements?label=Marketplace&amp;logo=visualstudiocode" /></a>
+    <a href="https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements"><img alt="Marketplace installs" src="https://img.shields.io/visual-studio-marketplace/i/yimmas.jupyter-enhancements?label=Installs" /></a>
+    <a href="https://github.com/yimmas-yimmas/jupyter-enhancements/actions/workflows/verify.yml"><img alt="Build and tests" src="https://github.com/yimmas-yimmas/jupyter-enhancements/actions/workflows/verify.yml/badge.svg?branch=main" /></a>
+    <a href="https://code.visualstudio.com/"><img alt="VS Code version 1.96 or newer" src="https://img.shields.io/badge/VS_Code-%E2%89%A5_1.96-007ACC?logo=visualstudiocode&amp;logoColor=white" /></a>
+  </p>
 
-  [**Install from Marketplace**](https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements) ·
-  [**Browse source**](https://github.com/yimmas-yimmas/jupyter-enhancements) ·
-  [**Report an issue**](https://github.com/yimmas-yimmas/jupyter-enhancements/issues)
+  <p>
+    <a href="https://marketplace.visualstudio.com/items?itemName=yimmas.jupyter-enhancements"><strong>Install from Marketplace</strong></a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/yimmas-yimmas/jupyter-enhancements">Browse source</a>
+    &nbsp;·&nbsp;
+    <a href="https://github.com/yimmas-yimmas/jupyter-enhancements/issues">Report an issue</a>
+  </p>
 </div>
 
 ---
+
+> **Source vs. Marketplace:** This guide documents the latest code on `main`. New features become available to Marketplace users after the extension is packaged and published as a new version.
 
 ### At a glance
 
