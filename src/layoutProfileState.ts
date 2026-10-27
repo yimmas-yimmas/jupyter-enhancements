@@ -137,3 +137,122 @@ export function isLayoutSnapshot(value: unknown): value is LayoutSnapshot {
         (value as LayoutSnapshot).version === 1 &&
         Array.isArray((value as LayoutSnapshot).entries);
 }
+
+/**
+ * Reconcile layout and status-bar preferences as one unit so switching between
+ * native / compact / hidden never fights the Balanced Compact profile.
+ *
+ * A managed entry remembers the prior *user-global* preference. If the user
+ * changes a managed value manually, stop owning that key rather than reverting
+ * their edit. Pre-existing v1 layout snapshots are supported unchanged.
+ */
+export type ExecutionTimeDisplay = 'native' | 'compact' | 'hidden';
+
+export function planNotebookPreferences(
+    existing: LayoutSnapshot | undefined,
+    current: Readonly<Record<string, unknown>>,
+    balanced: boolean,
+    timeDisplay: ExecutionTimeDisplay
+): { snapshot: LayoutSnapshot; updates: SettingUpdate[]; skipped: string[] } {
+    const entries: LayoutBackupEntry[] = [];
+    const updates: SettingUpdate[] = [];
+    const skipped: string[] = [];
+
+    const scalars: Record<string, unknown> = {};
+    if (balanced) {
+        for (const scalar of BALANCED_SCALARS) scalars[scalar.key] = scalar.value;
+    }
+    if (timeDisplay !== 'native') scalars['notebook.showCellStatusBar'] = 'hidden';
+
+    const previous = new Map((existing?.entries ?? []).map(entry => [entry.key, entry]));
+    const scalarNames = new Set([
+        ...BALANCED_SCALARS.map(s => s.key),
+        ...[...previous.values()].filter(e => e.kind === 'scalar').map(e => e.key)
+    ]);
+
+    for (const key of scalarNames) {
+        const managed = previous.get(key);
+        const old = managed?.kind === 'scalar' ? managed : undefined;
+        const now = current[key];
+        const desired = scalars[key];
+        const shouldManage = Object.prototype.hasOwnProperty.call(scalars, key);
+        if (old && !same(now, old.applied)) {
+            // An explicit user edit takes precedence. Never replace it.
+            skipped.push(key);
+            continue;
+        }
+        if (shouldManage) {
+            if (old) {
+                if (!same(now, desired)) updates.push({ key, value: desired });
+                entries.push({ ...old, applied: desired });
+            } else if (!same(now, desired)) {
+                updates.push({ key, value: desired });
+                entries.push({ kind: 'scalar', key, hadPrevious: now !== undefined, previous: now, applied: desired });
+            }
+        } else if (old) {
+            updates.push({ key, value: old.hadPrevious ? old.previous : undefined });
+        }
+    }
+
+    const editorKey = 'notebook.editorOptionsCustomizations' as const;
+    const oldEditor = previous.get(editorKey);
+    const old = oldEditor?.kind === 'editorOptions' ? oldEditor : undefined;
+    const currentObject = record(current[editorKey]);
+    const nextObject = { ...currentObject };
+    const editorPrevious: Record<string, { hadPrevious: boolean; value?: unknown }> = {};
+    const editorApplied: Record<string, unknown> = {};
+    let editorChanged = false;
+
+    const optionNames = new Set([
+        ...Object.keys(balanced ? BALANCED_EDITOR_OPTIONS : {}),
+        ...Object.keys(old?.applied ?? {})
+    ]);
+    for (const optionName of optionNames) {
+        const formerlyManaged = old && Object.prototype.hasOwnProperty.call(old.applied, optionName);
+        const isIntact = !formerlyManaged || same(currentObject[optionName], old.applied[optionName]);
+        if (!isIntact) {
+            skipped.push(editorKey + '.' + optionName);
+            continue;
+        }
+
+        if (balanced) {
+            const target = BALANCED_EDITOR_OPTIONS[optionName];
+            if (target === undefined) continue;
+            if (formerlyManaged) {
+                editorPrevious[optionName] = old!.previous[optionName];
+                editorApplied[optionName] = target;
+            } else if (!same(currentObject[optionName], target)) {
+                editorPrevious[optionName] = {
+                    hadPrevious: Object.prototype.hasOwnProperty.call(currentObject, optionName),
+                    value: currentObject[optionName]
+                };
+                editorApplied[optionName] = target;
+            }
+            if (!same(currentObject[optionName], target)) {
+                nextObject[optionName] = target;
+                editorChanged = true;
+            }
+        } else if (formerlyManaged) {
+            const prior = old!.previous[optionName];
+            if (prior.hadPrevious) nextObject[optionName] = prior.value;
+            else delete nextObject[optionName];
+            editorChanged = true;
+        }
+    }
+    if (Object.keys(editorApplied).length) {
+        entries.push({
+            kind: 'editorOptions', key: editorKey,
+            hadPrevious: old?.hadPrevious ?? (current[editorKey] !== undefined),
+            previous: editorPrevious, applied: editorApplied
+        });
+    }
+    if (editorChanged) {
+        const originalExisted = old?.hadPrevious ?? (current[editorKey] !== undefined);
+        updates.push({
+            key: editorKey,
+            value: !Object.keys(nextObject).length && !originalExisted ? undefined : nextObject
+        });
+    }
+
+    return { snapshot: { version: 1, entries }, updates, skipped };
+}
