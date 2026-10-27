@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ExecutionSnapshot, classifyExecutionTransition } from './executionState';
+import { DebugVisualPhase, nextDebugVisualPhase } from './debugVisualState';
 
 // --- DECORATION TYPES ---
 let successBgDec: vscode.TextEditorDecorationType;
@@ -10,6 +11,8 @@ let cmdSuccessDec: vscode.TextEditorDecorationType;
 let cellRunningDec: vscode.TextEditorDecorationType;
 let cellSuccessDec: vscode.TextEditorDecorationType;
 let scratchpadDec: vscode.TextEditorDecorationType;
+let debugPausedDec: vscode.TextEditorDecorationType;
+let debugPausedLineDec: vscode.TextEditorDecorationType;
 
 // --- STATE ---
 const cellStatusMap = new Map<string, 'success' | 'error'>();
@@ -19,6 +22,14 @@ const flashTimers = new Map<string, NodeJS.Timeout>();
 const scratchpadCells = new Set<string>();
 const sourceToScratchpadMap = new Map<string, string>();
 const currentlyAnimatingUris = new Set<string>();
+
+interface NotebookDebugVisual {
+    session: vscode.DebugSession;
+    cell: vscode.NotebookCell;
+    phase: DebugVisualPhase;
+    pausedLine?: number; // Zero-based, only when DAP source maps to THIS cell.
+}
+const notebookDebugSessions = new Map<string, NotebookDebugVisual>();
 
 export function activate(context: vscode.ExtensionContext) {
     reloadDecorations();
@@ -56,6 +67,23 @@ export function activate(context: vscode.ExtensionContext) {
             if (editor?.notebook.notebookType === 'jupyter-notebook') initKnownStates(editor.notebook);
         }),
         vscode.debug.onDidChangeActiveDebugSession(() => restoreAllVisibleDecorations()),
+        vscode.debug.onDidStartDebugSession(session => beginNotebookDebugSession(session)),
+        vscode.debug.onDidTerminateDebugSession(session => endNotebookDebugSession(session)),
+        // Jupyter's Debug Cell uses an inline DAP adapter. Observe its messages
+        // without replacing the adapter or altering any breakpoint behavior.
+        vscode.debug.registerDebugAdapterTrackerFactory('*', {
+            createDebugAdapterTracker(session) {
+                if (!isNotebookCellDebugSession(session)) return undefined;
+                return {
+                    onWillStartSession: () => beginNotebookDebugSession(session),
+                    onWillReceiveMessage: message => handleNotebookDebugProtocol(session, message, 'request'),
+                    onDidSendMessage: message => handleNotebookDebugProtocol(session, message, 'adapter'),
+                    onWillStopSession: () => endNotebookDebugSession(session),
+                    onExit: () => endNotebookDebugSession(session),
+                    onError: () => endNotebookDebugSession(session)
+                };
+            }
+        }),
         vscode.workspace.onDidChangeConfiguration(event => {
             if (event.affectsConfiguration('jupyterEnhancements')) {
                 clearFlashTimers();
@@ -127,6 +155,9 @@ function initKnownStates(notebook: vscode.NotebookDocument) {
 }
 
 function cleanupCell(uri: string) {
+    for (const [id, state] of notebookDebugSessions) {
+        if (state.cell.document.uri.toString() === uri) notebookDebugSessions.delete(id);
+    }
     stopRunningVisuals(uri);
     const flashTimer = flashTimers.get(uri);
     if (flashTimer) clearTimeout(flashTimer);
@@ -201,6 +232,146 @@ function startRunningVisuals(cell: vscode.NotebookCell) {
     restoreDecorationForCell(cell);
     startAnimationLoopForCell(cell);
     // Do not reveal/select/force-edit cells during background execution.
+}
+
+// =========================================================
+// --- JUPYTER DEBUGGER VISUALS ---
+// =========================================================
+function isNotebookCellDebugSession(session: vscode.DebugSession): boolean {
+    const mode = session.configuration.__mode;
+    // __mode === debugCell and __cellIndex are supplied by vscode-jupyter.
+    // Never decorate ordinary Python-file debugging sessions.
+    if (mode === 'runByLine') return false;
+    return mode === 'debugCell' ||
+        (typeof session.configuration.__cellIndex === 'number' && /python|jupyter|kernel/i.test(session.type)) ||
+        (/jupyter|kernel/i.test(session.type) && mode === undefined);
+}
+
+function findDebuggedCell(session: vscode.DebugSession): vscode.NotebookCell | undefined {
+    const name = String(session.configuration.name ?? '');
+    const notebooks = vscode.workspace.notebookDocuments.filter(n => n.notebookType === 'jupyter-notebook');
+    const matches = notebooks.filter(n => {
+        const filename = n.uri.path.split('/').pop() ?? '';
+        return name === filename || name.endsWith('/' + filename) || name.endsWith('\\' + filename);
+    });
+    const activeEditor = vscode.window.activeNotebookEditor;
+    const notebook = matches.length === 1 ? matches[0] :
+        activeEditor?.notebook.notebookType === 'jupyter-notebook' ? activeEditor.notebook :
+        notebooks.length === 1 ? notebooks[0] : undefined;
+    if (!notebook) return undefined;
+
+    const configuredIndex = session.configuration.__cellIndex;
+    const selectedIndex = activeEditor?.notebook.uri.toString() === notebook.uri.toString() ?
+        activeEditor.selections[0]?.start : undefined;
+    const index = Number.isInteger(configuredIndex) ? configuredIndex :
+        selectedIndex ?? -1;
+    if (index < 0 || index >= notebook.cellCount) return undefined;
+    const cell = notebook.cellAt(index);
+    return cell.kind === vscode.NotebookCellKind.Code ? cell : undefined;
+}
+
+function debugEnabled(): boolean {
+    return vscode.workspace.getConfiguration('jupyterEnhancements').get<boolean>('debug.enable', true);
+}
+
+function debugVisualForCell(uri: string): NotebookDebugVisual | undefined {
+    if (!debugEnabled()) return undefined;
+    const states = [...notebookDebugSessions.values()].filter(
+        state => state.cell.index >= 0 && state.cell.document.uri.toString() === uri
+    );
+    return states.find(state => state.phase === 'paused') ??
+        states.find(state => state.phase === 'running');
+}
+
+function beginNotebookDebugSession(session: vscode.DebugSession) {
+    if (!isNotebookCellDebugSession(session) || notebookDebugSessions.has(session.id)) return;
+    const cell = findDebuggedCell(session);
+    if (!cell) return; // Unknown cell: do not flash an arbitrary notebook cell.
+    notebookDebugSessions.set(session.id, { session, cell, phase: 'running' });
+    if (debugEnabled()) {
+        const uri = cell.document.uri.toString();
+        if (!currentlyAnimatingUris.has(uri)) {
+            currentlyAnimatingUris.add(uri);
+            startRunningVisuals(cell);
+        }
+    }
+}
+
+function endNotebookDebugSession(session: vscode.DebugSession) {
+    const state = notebookDebugSessions.get(session.id);
+    if (!state) return;
+    notebookDebugSessions.delete(session.id);
+    const uri = state.cell.document.uri.toString();
+    if (!debugVisualForCell(uri)) stopRunningVisuals(uri);
+    restoreDecorationForCell(state.cell);
+}
+
+function setNotebookDebugPhase(state: NotebookDebugVisual, phase: DebugVisualPhase) {
+    if (state.phase === phase) return;
+    state.phase = phase;
+    state.pausedLine = undefined;
+    const uri = state.cell.document.uri.toString();
+    if (phase === 'paused') {
+        stopRunningVisuals(uri);
+        // Show the stopped cell if it is off-screen, without stealing text focus.
+        const editor = vscode.window.activeNotebookEditor;
+        if (editor?.notebook.uri.toString() === state.cell.notebook.uri.toString()) {
+            ensureCellIsVisible(editor, state.cell);
+        }
+        restoreDecorationForCell(state.cell);
+    } else if (phase === 'running' && debugEnabled()) {
+        restoreDecorationForCell(state.cell);
+        if (!currentlyAnimatingUris.has(uri)) {
+            currentlyAnimatingUris.add(uri);
+            startRunningVisuals(state.cell);
+        }
+    } else {
+        stopRunningVisuals(uri);
+        restoreDecorationForCell(state.cell);
+    }
+}
+
+function handleNotebookDebugProtocol(
+    session: vscode.DebugSession,
+    message: any,
+    direction: 'request' | 'adapter'
+) {
+    if (!notebookDebugSessions.has(session.id)) beginNotebookDebugSession(session);
+    const state = notebookDebugSessions.get(session.id);
+    if (!state) return;
+
+    const phase = nextDebugVisualPhase(state.phase, {
+        direction,
+        type: message?.type,
+        event: message?.event,
+        command: message?.command
+    });
+    if (phase === 'ended') {
+        endNotebookDebugSession(session);
+        return;
+    }
+    setNotebookDebugPhase(state, phase);
+
+    // The notebook debugger often maps stack frames to virtual cell URIs.
+    // Highlight the exact paused line ONLY when the source URI matches the
+    // debugged notebook cell. Other .py modules must not light up a wrong line.
+    if (direction === 'adapter' && state.phase === 'paused' &&
+        message?.type === 'response' && message?.command === 'stackTrace' && message?.success) {
+        const frame = message.body?.stackFrames?.[0];
+        const path = frame?.source?.path;
+        const line = frame?.line;
+        if (typeof path !== 'string' || !Number.isInteger(line)) return;
+        try {
+            const uri = vscode.Uri.parse(path);
+            if (uri.toString() === state.cell.document.uri.toString() &&
+                line >= 1 && line <= state.cell.document.lineCount) {
+                state.pausedLine = line - 1;
+                restoreDecorationForCell(state.cell);
+            }
+        } catch {
+            // Ignore debugger source paths that aren't valid VS Code URIs.
+        }
+    }
 }
 
 function stopRunningVisuals(uri: string) {
@@ -535,7 +706,20 @@ function restoreDecorationForEditor(editor: vscode.TextEditor) {
     editor.setDecorations(errorBgDec, []);
     editor.setDecorations(cmdSuccessDec, []);
     editor.setDecorations(cellSuccessDec, []);
-    if (vscode.debug.activeDebugSession || !status) return;
+    editor.setDecorations(debugPausedDec, []);
+    editor.setDecorations(debugPausedLineDec, []);
+
+    const debugVisual = debugVisualForCell(uri);
+    if (debugVisual?.phase === 'paused') {
+        editor.setDecorations(debugPausedDec, [range]);
+        if (debugVisual.pausedLine !== undefined) {
+            editor.setDecorations(debugPausedLineDec, [
+                editor.document.lineAt(debugVisual.pausedLine).range
+            ]);
+        }
+        return;
+    }
+    if (debugVisual?.phase === 'running' || vscode.debug.activeDebugSession || !status) return;
 
     const canShowBackground = editor.selection.isEmpty && config.get<boolean>('background.enable', true);
     if (status === 'success') {
@@ -622,6 +806,17 @@ function reloadDecorations() {
         isWholeLine: true
     });
 
+    debugPausedDec = vscode.window.createTextEditorDecorationType({
+        borderColor: config.get('debug.pausedBorderColor', '#E5A000'),
+        borderWidth: '2px',
+        borderStyle: 'solid',
+        isWholeLine: true
+    });
+    debugPausedLineDec = vscode.window.createTextEditorDecorationType({
+        backgroundColor: config.get('debug.pausedLineColor', '#E5A00033'),
+        isWholeLine: true
+    });
+
     scratchpadDec = vscode.window.createTextEditorDecorationType({
         borderStyle: config.get('scratchpad.borderStyle', 'dashed'),
         borderWidth: `${config.get('scratchpad.borderWidth', '0.5px')} 0px ${config.get('scratchpad.borderWidth', '0.5px')} 6px`,
@@ -632,7 +827,7 @@ function reloadDecorations() {
 }
 
 function disposeAllDecorations() {
-    [successBgDec, errorBgDec, flashDec, cmdRunningDec, cmdSuccessDec, cellRunningDec, cellSuccessDec, scratchpadDec]
+    [successBgDec, errorBgDec, flashDec, cmdRunningDec, cmdSuccessDec, cellRunningDec, cellSuccessDec, scratchpadDec, debugPausedDec, debugPausedLineDec]
         .forEach(d => d?.dispose());
 }
 
@@ -664,6 +859,7 @@ function updateLayoutSettings() {
 }
 
 export function deactivate() {
+    notebookDebugSessions.clear();
     clearFlashTimers();
     clearAllAnimations();
     disposeAllDecorations();
