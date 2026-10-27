@@ -30,6 +30,7 @@ interface NotebookDebugVisual {
     pausedLine?: number; // Zero-based, only when DAP source maps to THIS cell.
 }
 const notebookDebugSessions = new Map<string, NotebookDebugVisual>();
+const completedDebugSessionIds = new Set<string>();
 
 export function activate(context: vscode.ExtensionContext) {
     reloadDecorations();
@@ -89,6 +90,7 @@ export function activate(context: vscode.ExtensionContext) {
                 clearFlashTimers();
                 reloadDecorations();
                 restoreAllVisibleDecorations();
+                synchronizeDebuggerSettings();
                 updateLayoutSettings();
             }
         }),
@@ -284,7 +286,8 @@ function debugVisualForCell(uri: string): NotebookDebugVisual | undefined {
 }
 
 function beginNotebookDebugSession(session: vscode.DebugSession) {
-    if (!isNotebookCellDebugSession(session) || notebookDebugSessions.has(session.id)) return;
+    if (!isNotebookCellDebugSession(session) || notebookDebugSessions.has(session.id) ||
+        completedDebugSessionIds.has(session.id)) return;
     const cell = findDebuggedCell(session);
     if (!cell) return; // Unknown cell: do not flash an arbitrary notebook cell.
     notebookDebugSessions.set(session.id, { session, cell, phase: 'running' });
@@ -298,12 +301,26 @@ function beginNotebookDebugSession(session: vscode.DebugSession) {
 }
 
 function endNotebookDebugSession(session: vscode.DebugSession) {
+    if (isNotebookCellDebugSession(session)) completedDebugSessionIds.add(session.id);
     const state = notebookDebugSessions.get(session.id);
     if (!state) return;
     notebookDebugSessions.delete(session.id);
     const uri = state.cell.document.uri.toString();
     if (!debugVisualForCell(uri)) stopRunningVisuals(uri);
     restoreDecorationForCell(state.cell);
+}
+
+function synchronizeDebuggerSettings() {
+    for (const state of notebookDebugSessions.values()) {
+        const uri = state.cell.document.uri.toString();
+        if (!debugEnabled()) {
+            stopRunningVisuals(uri);
+        } else if (state.phase === 'running' && !currentlyAnimatingUris.has(uri)) {
+            currentlyAnimatingUris.add(uri);
+            startRunningVisuals(state.cell);
+        }
+        restoreDecorationForCell(state.cell);
+    }
 }
 
 function setNotebookDebugPhase(state: NotebookDebugVisual, phase: DebugVisualPhase) {
@@ -336,6 +353,7 @@ function handleNotebookDebugProtocol(
     message: any,
     direction: 'request' | 'adapter'
 ) {
+    if (completedDebugSessionIds.has(session.id)) return;
     if (!notebookDebugSessions.has(session.id)) beginNotebookDebugSession(session);
     const state = notebookDebugSessions.get(session.id);
     if (!state) return;
@@ -860,6 +878,7 @@ function updateLayoutSettings() {
 
 export function deactivate() {
     notebookDebugSessions.clear();
+    completedDebugSessionIds.clear();
     clearFlashTimers();
     clearAllAnimations();
     disposeAllDecorations();
