@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ExecutionSnapshot, classifyExecutionTransition } from './executionState';
 import { DebugVisualPhase, nextDebugVisualPhase } from './debugVisualState';
+import { NotebookLayoutProfileManager } from './notebookLayout';
 
 // --- DECORATION TYPES ---
 let successBgDec: vscode.TextEditorDecorationType;
@@ -33,8 +34,10 @@ const notebookDebugSessions = new Map<string, NotebookDebugVisual>();
 const completedDebugSessionIds = new Set<string>();
 
 export function activate(context: vscode.ExtensionContext) {
+    const layoutProfile = new NotebookLayoutProfileManager(context);
+    void layoutProfile.enqueue();
     reloadDecorations();
-    updateLayoutSettings();
+    updateKernelStartupSetting();
     clearAllAnimations();
 
     for (const notebook of vscode.workspace.notebookDocuments) {
@@ -91,7 +94,13 @@ export function activate(context: vscode.ExtensionContext) {
                 reloadDecorations();
                 restoreAllVisibleDecorations();
                 synchronizeDebuggerSettings();
-                updateLayoutSettings();
+                if (event.affectsConfiguration('jupyterEnhancements.kernel.optimizeStartup')) {
+                    updateKernelStartupSetting();
+                }
+            }
+            if (event.affectsConfiguration('jupyterEnhancements.layout.profile') ||
+                event.affectsConfiguration('jupyterEnhancements.layout.enableCompactView')) {
+                void layoutProfile.enqueue();
             }
         }),
         vscode.window.onDidChangeTextEditorSelection(event => {
@@ -114,6 +123,10 @@ export function activate(context: vscode.ExtensionContext) {
     context.subscriptions.push({ dispose: () => clearInterval(pollInterval) });
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('jupyter-enhancements.enableBalancedCompactLayout',
+            () => layoutProfile.select('balancedCompact')),
+        vscode.commands.registerCommand('jupyter-enhancements.restoreNotebookLayout',
+            () => layoutProfile.select('standard')),
         vscode.commands.registerCommand('jupyter-enhancements.runInScratchpad', cell => runScratchpadHandler(cell)),
         vscode.commands.registerCommand('jupyter-enhancements.runInScratchpadAbove', cell => runScratchpadHandler(cell, 'above')),
         vscode.commands.registerCommand('jupyter-enhancements.runInScratchpadBelow', cell => runScratchpadHandler(cell, 'below')),
@@ -849,30 +862,15 @@ function disposeAllDecorations() {
         .forEach(d => d?.dispose());
 }
 
-function updateLayoutSettings() {
+// Optional, existing kernel startup preference is kept separate from notebook layout.
+function updateKernelStartupSetting() {
     const config = vscode.workspace.getConfiguration('jupyterEnhancements');
-    const vscodeConfig = vscode.workspace.getConfiguration();
-
     if (config.get<boolean>('kernel.optimizeStartup', false)) {
-        try {
-            const pythonConfig = vscode.workspace.getConfiguration('python');
-            pythonConfig.update('terminal.activateEnvironment', false, vscode.ConfigurationTarget.Global);
-        } catch (e) { }
-    }
-
-    const enableCompact = config.get<boolean>('layout.enableCompactView', false);
-    if (enableCompact) {
-        const settings = {
-            "notebook.cellExecutionTimeVerbosity": "verbose",
-            "notebook.consolidatedRunButton": true,
-            "notebook.lineNumbers": "on",
-            "notebook.showCellStatusBar": "visibleAfterExecute"
-        };
-        for (const [key, value] of Object.entries(settings)) {
-            try {
-                vscodeConfig.update(key, value, vscode.ConfigurationTarget.Global);
-            } catch (e) { }
-        }
+        void vscode.workspace.getConfiguration('python').update(
+            'terminal.activateEnvironment', false, vscode.ConfigurationTarget.Global
+        ).then(undefined, error => {
+            console.warn('Jupyter Enhancements could not optimize Python startup:', error);
+        });
     }
 }
 
