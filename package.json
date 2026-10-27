@@ -35,7 +35,8 @@
     "onCommand:jupyter-enhancements.copyCellDown",
     "onCommand:jupyter-enhancements.cutCell",
     "onCommand:jupyter-enhancements.enableBalancedCompactLayout",
-    "onCommand:jupyter-enhancements.restoreNotebookLayout"
+    "onCommand:jupyter-enhancements.restoreNotebookLayout",
+    "onCommand:jupyter-enhancements.chooseExecutionTimeDisplay"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -123,6 +124,11 @@
       {
         "command": "jupyter-enhancements.restoreNotebookLayout",
         "title": "Restore Previous Notebook Layout",
+        "category": "Jupyter Enhancements"
+      },
+      {
+        "command": "jupyter-enhancements.chooseExecutionTimeDisplay",
+        "title": "Choose Execution Time Display",
         "category": "Jupyter Enhancements"
       }
     ],
@@ -425,6 +431,21 @@
             "Use the reversible JupyterLab-inspired denser layout while retaining cell toolbars and execution visuals."
           ],
           "description": "Reversible notebook layout profile. Balanced Compact saves user notebook settings and restores them when Standard is selected."
+        },
+        "jupyterEnhancements.executionTime.display": {
+          "type": "string",
+          "default": "native",
+          "enum": [
+            "native",
+            "compact",
+            "hidden"
+          ],
+          "enumDescriptions": [
+            "Keep VS Code's native cell status bar and execution timing.",
+            "Hide the native status row and show status plus duration next to notebook code.",
+            "Hide the status row and execution-time text; preserve color/border indicators."
+          ],
+          "description": "Choose where execution time appears. Compact displays a small inline status/duration label at the end of the first nonempty code line (not an overlay). Managed status bar changes are reversible."
         }
       }
     }
