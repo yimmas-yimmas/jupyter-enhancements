@@ -259,9 +259,22 @@ function handleCellFinished(cell: vscode.NotebookCell, success: boolean) {
     restoreDecorationForCell(cell);
 }
 
-function ensureCellIsVisible(editor: vscode.NotebookEditor, cell: vscode.NotebookCell) {
+/**
+ * Follow the running cell during an explicit Run Current & Below sequence.
+ * Scroll only when the cell leaves the viewport, and never change the user's
+ * selected notebook cell or text-editing focus.
+ */
+function ensureCellIsVisible(editor: vscode.NotebookEditor, cell: vscode.NotebookCell): boolean {
+    if (vscode.window.activeNotebookEditor?.notebook.uri.toString() !== editor.notebook.uri.toString()) {
+        return false; // User switched notebooks; don't steal the viewport.
+    }
     const isVisible = editor.visibleRanges.some(range => cell.index >= range.start && cell.index < range.end);
-    if (!isVisible) editor.revealRange(new vscode.NotebookRange(cell.index, cell.index + 1), vscode.NotebookEditorRevealType.AtTop);
+    if (isVisible) return false;
+    editor.revealRange(
+        new vscode.NotebookRange(cell.index, cell.index + 1),
+        vscode.NotebookEditorRevealType.InCenterIfOutsideViewport
+    );
+    return true;
 }
 
 // =========================================================
@@ -492,6 +505,11 @@ const runSequenceHandler = async (mode: 'below' | 'above' | 'all', args?: any) =
         const cell = notebook.cellAt(i);
         if (cell.kind !== vscode.NotebookCellKind.Code || !cell.document.getText().trim()) continue;
         try {
+            // This command intentionally follows progress through off-screen cells.
+            // Reveal only; do not change selection or toggle notebook edit mode.
+            if (ensureCellIsVisible(editor, cell)) {
+                await new Promise<void>(resolve => setTimeout(resolve, 50));
+            }
             const success = await executeCellAndWait(cell);
             if (!success) break;
         } catch (error) {
