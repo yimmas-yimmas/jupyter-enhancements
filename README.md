@@ -25,6 +25,7 @@ Never guess the state of your cells again.
 *   **Running:** A distinct **Blue Border** (customizable thickness and position) appears while code executes.
 *   **Success:** A brief **Yellow Flash** and a persistent **Green Border/Background** confirms execution.
 *   **Error:** A **Red Background** immediately highlights failed cells.
+*   **Debug Cell:** A pulsing **Blue Border** follows the debugged notebook cell until a breakpoint; an **Amber Border** marks a paused debugger. Continue or Step resumes blue. If the debugger identifies a matching notebook-cell source, the paused line receives a subtle amber tint.
 
 ### 2. 🛠️ The "Power Toolbar"
 A floating menu appears on the active cell with essential tools sorted for speed:
@@ -42,7 +43,7 @@ Need to debug a variable without adding a mess to your notebook?
 *   Perfect for quick data inspection.
 
 ### 4. ⚡ Performance & Layout
-*   **Compact View:** Optional tight layout with verbose timing and line numbers.
+*   **Balanced Compact Layout:** JupyterLab-inspired notebook density using native VS Code settings; keeps all cell toolbar actions and colored running/debugging effects, and restores previous user settings when turned off.
 *   **Optimized Startup:** Skips unnecessary terminal activation steps for faster kernel loading on Windows/Conda.
 
 ---
@@ -62,6 +63,15 @@ You can customize almost every aspect of this extension in **File > Preferences 
 | `outerBorder.position`| `left` | Position of the bar (left, right, top, bottom). |
 | `outerBorder.persist` | `true` | Keep the green bar visible after success. |
 
+### 🐞 Jupyter Debugger Settings
+| Setting | Default | Description |
+| :--- | :--- | :--- |
+| `debug.enable` | `true` | Show blue running and amber paused visuals for Jupyter **Debug Cell** sessions. |
+| `debug.pausedBorderColor` | `#E5A000` | Border color while the debugger is stopped. |
+| `debug.pausedLineColor` | `#E5A00033` | Subtle tint for a paused line **only when the source maps to that notebook cell**. |
+
+These debug visuals depend on Jupyter's Debug Adapter Protocol events. They don't step through arbitrary Python statements during normal notebook execution; output visibility and ordinary editor selection are unchanged.
+
 ### 🧪 Scratchpad Settings
 | Setting | Default | Description |
 | :--- | :--- | :--- |
@@ -69,10 +79,49 @@ You can customize almost every aspect of this extension in **File > Preferences 
 | `scratchpad.borderStyle` | `dashed` | Style of the scratchpad cell border. |
 | `scratchpad.borderColor` | `#80808080` | Color of the scratchpad border. |
 
+### ⏱️ Execution-time display (optional)
+
+Use **Settings → Jupyter Enhancements: Execution Time Display** or Command Palette:
+**Jupyter Enhancements: Choose Execution Time Display**.
+
+| Display | Behavior |
+| :--- | :--- |
+| **Native** (default) | Keep the normal VS Code cell status bar, including execution timing. Balanced Compact uses `visibleAfterExecute` as before. |
+| **Compact** | Hide the extra status-bar row; append a subtle execution status and duration at the end of the **first nonempty code line**. Running durations update about every 500 ms; completed durations use Jupyter execution timestamps where available. |
+| **Hidden** | Hide the native cell status bar and all inline timing text. Existing running/success/error/debug borders remain active. |
+
+**Compact** uses a native VS Code text-editor decoration, not source-code edits, toolbar changes, CSS injection or an extra row. Very long code lines may place the indicator farther to the right (the VS Code API doesn't guarantee positioning at the cell's top-right edge). Execution timing may be unavailable for some kernels; the indicator will show the cell's reported state without inventing an elapsed time.
+
+The mode picker now updates the **effective setting scope** (user, workspace, or notebook folder). It also temporarily hides existing workspace/folder-level cell-status-bar overrides in Compact or Hidden modes and restores them when Native is selected. The extension shows a confirmation or warning if a conflicting setting prevents the switch from taking effect. The extension remembers the previous user-global `notebook.showCellStatusBar` value. Switching back to Native restores the user's original status-bar preference when Standard layout is selected, or uses Balanced Compact's normal `visibleAfterExecute` behavior while Balanced Compact remains active. Manually changed settings are not overwritten. Workspace-specific status-bar settings can override user settings.
+
+### 📐 Balanced Compact — Reversible notebook layout
+
+1. In VS Code 1.142.0 open **Settings** and search for `Jupyter Enhancements: Layout Profile`, then select **Balanced Compact**.
+2. Alternatively, use Command Palette: **Jupyter Enhancements: Enable Balanced Compact Notebook Layout**.
+3. To undo, select **Standard** or run **Jupyter Enhancements: Restore Previous Notebook Layout**.
+
+The profile changes the following user notebook preferences when execution-time display is set to **Native** (the default):
+
+| Notebook setting | Balanced Compact |
+| :--- | :--- |
+| `notebook.compactView` | `true` |
+| `notebook.insertToolbarLocation` | `notebookToolbar` |
+| `notebook.showCellStatusBar` | `visibleAfterExecute` |
+| `notebook.editorOptionsCustomizations.editor.fontSize` | `13` |
+| `notebook.editorOptionsCustomizations.editor.lineHeight` | `19` |
+| `notebook.output.fontSize` | `12` |
+| `notebook.output.lineHeight` | `18` |
+
+The restore action remembers existing **user** notebook preferences, removes previously absent overrides, and preserves unrelated editor customizations and later manual edits. The snapshot is retained across VS Code restarts. Enable the profile intentionally; it changes **user-global** notebook settings for all VS Code notebooks (unless a workspace overrides them). Use **Restore Previous Notebook Layout before uninstalling** if you want to revert the settings.
+
+This is the tightest layout reliably exposed by standard VS Code notebook APIs; exact cell-container padding and JupyterLab spacing are not configurable without unsupported UI/CSS injection. Cell title toolbars, Run/Copy/Paste actions, selection behavior, execution animations and debugger decorations are not changed.
+
 ### 🖥️ Layout & Kernel
 | Setting | Default | Description |
 | :--- | :--- | :--- |
-| `layout.enableCompactView` | `false` | Enforces verbose timing, line numbers, and tight layout. |
+| `layout.profile` | `standard` | Choose `balancedCompact` for tighter notebooks, or `standard` to restore previous preferences. |
+| `executionTime.display` | `native` | `native` / `compact` / `hidden`; status-bar preferences are reversible. |
+| `layout.enableCompactView` | `false` | Deprecated alias for Balanced Compact if `layout.profile` is not explicitly set. |
 | `layout.hideCellToolbar` | `false` | Hides the default floating toolbar if you prefer a clean look. |
 | `kernel.optimizeStartup` | `true` | Speeds up startup on Windows/Conda environments. |
 
