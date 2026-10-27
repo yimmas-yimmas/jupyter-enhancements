@@ -11,6 +11,8 @@ on:
       - "README.md"
       - "icon.png"
       - ".github/workflows/package-vsix.yml"
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
