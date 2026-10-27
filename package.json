@@ -33,7 +33,9 @@
     "onCommand:jupyter-enhancements.copyCell",
     "onCommand:jupyter-enhancements.pasteCell",
     "onCommand:jupyter-enhancements.copyCellDown",
-    "onCommand:jupyter-enhancements.cutCell"
+    "onCommand:jupyter-enhancements.cutCell",
+    "onCommand:jupyter-enhancements.enableBalancedCompactLayout",
+    "onCommand:jupyter-enhancements.restoreNotebookLayout"
   ],
   "main": "./out/extension.js",
   "contributes": {
@@ -112,6 +114,16 @@
         "command": "jupyter-enhancements.cutCell",
         "title": "Cut Cell",
         "icon": "$(issue-draft)"
+      },
+      {
+        "command": "jupyter-enhancements.enableBalancedCompactLayout",
+        "title": "Enable Balanced Compact Notebook Layout",
+        "category": "Jupyter Enhancements"
+      },
+      {
+        "command": "jupyter-enhancements.restoreNotebookLayout",
+        "title": "Restore Previous Notebook Layout",
+        "category": "Jupyter Enhancements"
       }
     ],
     "keybindings": [
@@ -128,14 +140,11 @@
           "group": "inline/0_cellops@0",
           "when": "notebookType == jupyter-notebook"
         },
-
         {
           "command": "jupyter-enhancements.toggleOutput",
           "group": "inline/0_cellops@1",
           "when": "notebookType == jupyter-notebook"
         },
-
-
         {
           "command": "jupyter-enhancements.clearCellOutput",
           "group": "inline/0_cellops@2",
@@ -238,7 +247,8 @@
         "jupyterEnhancements.layout.enableCompactView": {
           "type": "boolean",
           "default": false,
-          "description": "Enables a tight layout: Verbose timing, Line numbers ON, Small output font, Consolidated Run Button, etc."
+          "description": "Legacy compact view switch; use layout.profile for a reversible, JupyterLab-inspired layout.",
+          "deprecationMessage": "Use jupyterEnhancements.layout.profile instead. This legacy setting maps to Balanced Compact unless a profile is explicitly selected."
         },
         "jupyterEnhancements.kernel.optimizeStartup": {
           "type": "boolean",
@@ -402,6 +412,19 @@
             "above"
           ],
           "description": "Where to insert the scratchpad cell relative to the active cell."
+        },
+        "jupyterEnhancements.layout.profile": {
+          "type": "string",
+          "default": "standard",
+          "enum": [
+            "standard",
+            "balancedCompact"
+          ],
+          "enumDescriptions": [
+            "Leave notebook layout unchanged or restore saved VS Code preferences.",
+            "Use the reversible JupyterLab-inspired denser layout while retaining cell toolbars and execution visuals."
+          ],
+          "description": "Reversible notebook layout profile. Balanced Compact saves user notebook settings and restores them when Standard is selected."
         }
       }
     }
