@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import {
     CONTROLLED_KEYS, LayoutSnapshot, isLayoutSnapshot,
-    planBalancedLayout, planRestoreLayout
+    ExecutionTimeDisplay, planNotebookPreferences
 } from './layoutProfileState';
 
 const BACKUP_KEY = 'jupyterEnhancements.layout.balancedCompact.originalUserSettings.v1';
@@ -55,50 +55,42 @@ export class NotebookLayoutProfileManager {
     }
 
     private async synchronize(): Promise<void> {
-        const existing = this.context.globalState.get<unknown>(BACKUP_KEY);
-        const backup = isLayoutSnapshot(existing) ? existing : undefined;
-        if (this.wantsBalanced()) {
-            if (backup) return; // Already managed: never override later manual edits.
-            const plan = planBalancedLayout(this.globalValues());
-            // Store original user values before applying so an interrupted
-            // extension-host session can still restore the old settings.
+        const currentSnapshot = this.context.globalState.get<unknown>(BACKUP_KEY);
+        const snapshot = isLayoutSnapshot(currentSnapshot) ? currentSnapshot : undefined;
+        const display = vscode.workspace.getConfiguration('jupyterEnhancements')
+            .get<ExecutionTimeDisplay>('executionTime.display', 'native');
+        const plan = planNotebookPreferences(
+            snapshot, this.globalValues(), this.wantsBalanced(), display
+        );
+
+        // Save the prior user settings and managed targets before VS Code updates.
+        // This is important when the extension host restarts during application.
+        if (plan.snapshot.entries.length) {
             await this.context.globalState.update(BACKUP_KEY, plan.snapshot);
-            const failed: string[] = [];
-            for (const update of plan.updates) {
-                try {
-                    await vscode.workspace.getConfiguration().update(
-                        update.key, update.value, vscode.ConfigurationTarget.Global
-                    );
-                } catch (error) {
-                    failed.push(update.key + ': ' + String(error));
-                }
-            }
-            if (failed.length) {
-                vscode.window.showWarningMessage('Balanced Compact could not apply: ' + failed.join('; '));
-            }
-        } else if (backup) {
-            const plan = planRestoreLayout(backup, this.globalValues());
-            const failed: string[] = [];
-            for (const update of plan.updates) {
-                try {
-                    await vscode.workspace.getConfiguration().update(
-                        update.key, update.value, vscode.ConfigurationTarget.Global
-                    );
-                } catch (error) {
-                    failed.push(update.key + ': ' + String(error));
-                }
-            }
-            if (!failed.length) {
-                await this.context.globalState.update(BACKUP_KEY, undefined);
-            } else {
-                vscode.window.showWarningMessage('Some notebook settings could not be restored: ' + failed.join('; '));
-            }
-            if (plan.skipped.length) {
-                vscode.window.showInformationMessage(
-                    'Some notebook settings were changed manually and were left unchanged: ' +
-                    plan.skipped.join(', ')
+        }
+
+        const failed: string[] = [];
+        for (const update of plan.updates) {
+            try {
+                await vscode.workspace.getConfiguration().update(
+                    update.key, update.value, vscode.ConfigurationTarget.Global
                 );
+            } catch (error) {
+                failed.push(update.key + ': ' + String(error));
             }
+        }
+
+        if (failed.length) {
+            vscode.window.showWarningMessage(
+                'Notebook layout / execution-time setting update failed: ' + failed.join('; ')
+            );
+        } else if (!plan.snapshot.entries.length && snapshot) {
+            await this.context.globalState.update(BACKUP_KEY, undefined);
+        }
+        if (plan.skipped.length) {
+            vscode.window.showInformationMessage(
+                'Notebook preferences changed manually were preserved: ' + plan.skipped.join(', ')
+            );
         }
     }
 
