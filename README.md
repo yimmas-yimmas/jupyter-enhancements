@@ -79,13 +79,28 @@ These debug visuals depend on Jupyter's Debug Adapter Protocol events. They don'
 | `scratchpad.borderStyle` | `dashed` | Style of the scratchpad cell border. |
 | `scratchpad.borderColor` | `#80808080` | Color of the scratchpad border. |
 
+### ⏱️ Execution-time display (optional)
+
+Use **Settings → Jupyter Enhancements: Execution Time Display** or Command Palette:
+**Jupyter Enhancements: Choose Execution Time Display**.
+
+| Display | Behavior |
+| :--- | :--- |
+| **Native** (default) | Keep the normal VS Code cell status bar, including execution timing. Balanced Compact uses `visibleAfterExecute` as before. |
+| **Compact** | Hide the extra status-bar row; append a subtle execution status and duration at the end of the **first nonempty code line**. Running durations update about every 500 ms; completed durations use Jupyter execution timestamps where available. |
+| **Hidden** | Hide the native cell status bar and all inline timing text. Existing running/success/error/debug borders remain active. |
+
+**Compact** uses a native VS Code text-editor decoration, not source-code edits, toolbar changes, CSS injection or an extra row. Very long code lines may place the indicator farther to the right (the VS Code API doesn't guarantee positioning at the cell's top-right edge). Execution timing may be unavailable for some kernels; the indicator will show the cell's reported state without inventing an elapsed time.
+
+The extension remembers the previous user-global `notebook.showCellStatusBar` value. Switching back to Native restores the user's original status-bar preference when Standard layout is selected, or uses Balanced Compact's normal `visibleAfterExecute` behavior while Balanced Compact remains active. Manually changed settings are not overwritten. Workspace-specific status-bar settings can override user settings.
+
 ### 📐 Balanced Compact — Reversible notebook layout
 
 1. In VS Code 1.142.0 open **Settings** and search for `Jupyter Enhancements: Layout Profile`, then select **Balanced Compact**.
 2. Alternatively, use Command Palette: **Jupyter Enhancements: Enable Balanced Compact Notebook Layout**.
 3. To undo, select **Standard** or run **Jupyter Enhancements: Restore Previous Notebook Layout**.
 
-The profile changes only these user notebook preferences:
+The profile changes the following user notebook preferences when execution-time display is set to **Native** (the default):
 
 | Notebook setting | Balanced Compact |
 | :--- | :--- |
@@ -105,6 +120,7 @@ This is the tightest layout reliably exposed by standard VS Code notebook APIs; 
 | Setting | Default | Description |
 | :--- | :--- | :--- |
 | `layout.profile` | `standard` | Choose `balancedCompact` for tighter notebooks, or `standard` to restore previous preferences. |
+| `executionTime.display` | `native` | `native` / `compact` / `hidden`; status-bar preferences are reversible. |
 | `layout.enableCompactView` | `false` | Deprecated alias for Balanced Compact if `layout.profile` is not explicitly set. |
 | `layout.hideCellToolbar` | `false` | Hides the default floating toolbar if you prefer a clean look. |
 | `kernel.optimizeStartup` | `true` | Speeds up startup on Windows/Conda environments. |
