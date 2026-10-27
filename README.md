@@ -43,7 +43,7 @@ Need to debug a variable without adding a mess to your notebook?
 *   Perfect for quick data inspection.
 
 ### 4. ⚡ Performance & Layout
-*   **Compact View:** Optional tight layout with verbose timing and line numbers.
+*   **Balanced Compact Layout:** JupyterLab-inspired notebook density using native VS Code settings; keeps all cell toolbar actions and colored running/debugging effects, and restores previous user settings when turned off.
 *   **Optimized Startup:** Skips unnecessary terminal activation steps for faster kernel loading on Windows/Conda.
 
 ---
@@ -79,10 +79,33 @@ These debug visuals depend on Jupyter's Debug Adapter Protocol events. They don'
 | `scratchpad.borderStyle` | `dashed` | Style of the scratchpad cell border. |
 | `scratchpad.borderColor` | `#80808080` | Color of the scratchpad border. |
 
+### 📐 Balanced Compact — Reversible notebook layout
+
+1. In VS Code 1.142.0 open **Settings** and search for `Jupyter Enhancements: Layout Profile`, then select **Balanced Compact**.
+2. Alternatively, use Command Palette: **Jupyter Enhancements: Enable Balanced Compact Notebook Layout**.
+3. To undo, select **Standard** or run **Jupyter Enhancements: Restore Previous Notebook Layout**.
+
+The profile changes only these user notebook preferences:
+
+| Notebook setting | Balanced Compact |
+| :--- | :--- |
+| `notebook.compactView` | `true` |
+| `notebook.insertToolbarLocation` | `notebookToolbar` |
+| `notebook.showCellStatusBar` | `visibleAfterExecute` |
+| `notebook.editorOptionsCustomizations.editor.fontSize` | `13` |
+| `notebook.editorOptionsCustomizations.editor.lineHeight` | `19` |
+| `notebook.output.fontSize` | `12` |
+| `notebook.output.lineHeight` | `18` |
+
+The restore action remembers existing **user** notebook preferences, removes previously absent overrides, and preserves unrelated editor customizations and later manual edits. The snapshot is retained across VS Code restarts. Enable the profile intentionally; it changes **user-global** notebook settings for all VS Code notebooks (unless a workspace overrides them). Use **Restore Previous Notebook Layout before uninstalling** if you want to revert the settings.
+
+This is the tightest layout reliably exposed by standard VS Code notebook APIs; exact cell-container padding and JupyterLab spacing are not configurable without unsupported UI/CSS injection. Cell title toolbars, Run/Copy/Paste actions, selection behavior, execution animations and debugger decorations are not changed.
+
 ### 🖥️ Layout & Kernel
 | Setting | Default | Description |
 | :--- | :--- | :--- |
-| `layout.enableCompactView` | `false` | Enforces verbose timing, line numbers, and tight layout. |
+| `layout.profile` | `standard` | Choose `balancedCompact` for tighter notebooks, or `standard` to restore previous preferences. |
+| `layout.enableCompactView` | `false` | Deprecated alias for Balanced Compact if `layout.profile` is not explicitly set. |
 | `layout.hideCellToolbar` | `false` | Hides the default floating toolbar if you prefer a clean look. |
 | `kernel.optimizeStartup` | `true` | Speeds up startup on Windows/Conda environments. |
 
