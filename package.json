@@ -2,7 +2,7 @@
   "name": "jupyter-enhancements",
   "displayName": "Jupyter Enhancements",
   "description": "Supercharge Jupyter Notebooks with visual cues (Flash, Backgrounds, Borders) and smart execution controls.",
-  "version": "1.30.0",
+  "version": "1.31.0",
   "publisher": "yimmas",
   "icon": "icon.png",
   "engines": {
