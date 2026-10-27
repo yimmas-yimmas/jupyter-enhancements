@@ -348,6 +348,23 @@
           "default": "#006400",
           "description": "Color of the outer indicator after success."
         },
+        "jupyterEnhancements.debug.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Animate the debugged Jupyter cell while running and show an amber border at breakpoints."
+        },
+        "jupyterEnhancements.debug.pausedBorderColor": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#E5A000",
+          "description": "Border color for a Jupyter cell paused at a debugger breakpoint."
+        },
+        "jupyterEnhancements.debug.pausedLineColor": {
+          "type": "string",
+          "format": "color-hex",
+          "default": "#E5A00033",
+          "description": "Background tint of the paused line if the debugger provides a matching notebook-cell source."
+        },
         "jupyterEnhancements.scratchpad.borderColor": {
           "type": "string",
           "format": "color-hex",
