@@ -50,7 +50,7 @@ jobs:
           test -s "$file"
           unzip -Z -1 "$file" > files.txt
           grep -Fxq "extension/package.json" files.txt
-          grep -Fxq "extension/README.md" files.txt
+          grep -Fixq "extension/readme.md" files.txt
           grep -Fxq "extension/icon.png" files.txt
           grep -Fxq "extension/out/extension.js" files.txt
           if grep -Ei '\.(vsix|msg)$|(^|/)(test\.ipynb|package-lock\.json)$' files.txt; then
