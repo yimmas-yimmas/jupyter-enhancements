@@ -1,4 +1,4 @@
-name: TypeScript and execution-state tests
+name: TypeScript and notebook state tests
 on:
   push:
     branches: [main, fix/notebook-animation-and-editing-142]
@@ -15,4 +15,4 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run compile
-      - run: node --test tests/execution-state.test.cjs
+      - run: node --test tests/*.test.cjs
