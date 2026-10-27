@@ -25,6 +25,7 @@ Never guess the state of your cells again.
 *   **Running:** A distinct **Blue Border** (customizable thickness and position) appears while code executes.
 *   **Success:** A brief **Yellow Flash** and a persistent **Green Border/Background** confirms execution.
 *   **Error:** A **Red Background** immediately highlights failed cells.
+*   **Debug Cell:** A pulsing **Blue Border** follows the debugged notebook cell until a breakpoint; an **Amber Border** marks a paused debugger. Continue or Step resumes blue. If the debugger identifies a matching notebook-cell source, the paused line receives a subtle amber tint.
 
 ### 2. 🛠️ The "Power Toolbar"
 A floating menu appears on the active cell with essential tools sorted for speed:
@@ -61,6 +62,15 @@ You can customize almost every aspect of this extension in **File > Preferences 
 | `outerBorder.enable` | `true` | Enable the thick indicator bar on the side. |
 | `outerBorder.position`| `left` | Position of the bar (left, right, top, bottom). |
 | `outerBorder.persist` | `true` | Keep the green bar visible after success. |
+
+### 🐞 Jupyter Debugger Settings
+| Setting | Default | Description |
+| :--- | :--- | :--- |
+| `debug.enable` | `true` | Show blue running and amber paused visuals for Jupyter **Debug Cell** sessions. |
+| `debug.pausedBorderColor` | `#E5A000` | Border color while the debugger is stopped. |
+| `debug.pausedLineColor` | `#E5A00033` | Subtle tint for a paused line **only when the source maps to that notebook cell**. |
+
+These debug visuals depend on Jupyter's Debug Adapter Protocol events. They don't step through arbitrary Python statements during normal notebook execution; output visibility and ordinary editor selection are unchanged.
 
 ### 🧪 Scratchpad Settings
 | Setting | Default | Description |
