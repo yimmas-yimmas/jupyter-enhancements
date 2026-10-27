@@ -2,6 +2,7 @@ import * as vscode from 'vscode';
 import { ExecutionSnapshot, classifyExecutionTransition } from './executionState';
 import { DebugVisualPhase, nextDebugVisualPhase } from './debugVisualState';
 import { NotebookLayoutProfileManager } from './notebookLayout';
+import { compactTiming } from './executionTiming';
 
 // --- DECORATION TYPES ---
 let successBgDec: vscode.TextEditorDecorationType;
@@ -14,6 +15,7 @@ let cellSuccessDec: vscode.TextEditorDecorationType;
 let scratchpadDec: vscode.TextEditorDecorationType;
 let debugPausedDec: vscode.TextEditorDecorationType;
 let debugPausedLineDec: vscode.TextEditorDecorationType;
+let compactExecutionTimingDec: vscode.TextEditorDecorationType;
 
 // --- STATE ---
 const cellStatusMap = new Map<string, 'success' | 'error'>();
@@ -99,8 +101,17 @@ export function activate(context: vscode.ExtensionContext) {
                 }
             }
             if (event.affectsConfiguration('jupyterEnhancements.layout.profile') ||
-                event.affectsConfiguration('jupyterEnhancements.layout.enableCompactView')) {
+                event.affectsConfiguration('jupyterEnhancements.layout.enableCompactView') ||
+                event.affectsConfiguration('jupyterEnhancements.executionTime.display')) {
                 void layoutProfile.enqueue();
+            }
+        }),
+        vscode.workspace.onDidChangeTextDocument(event => {
+            if (event.document.uri.scheme !== 'vscode-notebook-cell') return;
+            for (const editor of vscode.window.visibleTextEditors) {
+                if (editor.document.uri.toString() === event.document.uri.toString()) {
+                    updateCompactTimingForEditor(editor);
+                }
             }
         }),
         vscode.window.onDidChangeTextEditorSelection(event => {
@@ -127,6 +138,20 @@ export function activate(context: vscode.ExtensionContext) {
             () => layoutProfile.select('balancedCompact')),
         vscode.commands.registerCommand('jupyter-enhancements.restoreNotebookLayout',
             () => layoutProfile.select('standard')),
+        vscode.commands.registerCommand('jupyter-enhancements.chooseExecutionTimeDisplay', async () => {
+            const items = [
+                { label: 'Native status bar', description: 'Original VS Code execution timing row', value: 'native' },
+                { label: 'Compact indicator', description: 'Inline cell status and duration; no extra row', value: 'compact' },
+                { label: 'Hidden', description: 'No timing text or native status row', value: 'hidden' }
+            ];
+            const selected = await vscode.window.showQuickPick(items, {
+                placeHolder: 'How should notebook execution time be displayed?'
+            });
+            if (!selected) return;
+            await vscode.workspace.getConfiguration('jupyterEnhancements').update(
+                'executionTime.display', selected.value, vscode.ConfigurationTarget.Global
+            );
+        }),
         vscode.commands.registerCommand('jupyter-enhancements.runInScratchpad', cell => runScratchpadHandler(cell)),
         vscode.commands.registerCommand('jupyter-enhancements.runInScratchpadAbove', cell => runScratchpadHandler(cell, 'above')),
         vscode.commands.registerCommand('jupyter-enhancements.runInScratchpadBelow', cell => runScratchpadHandler(cell, 'below')),
@@ -430,7 +455,10 @@ function startAnimationLoopForCell(cell: vscode.NotebookCell) {
     const update = () => {
         if (!currentlyAnimatingUris.has(uri)) return;
         for (const editor of vscode.window.visibleTextEditors) {
-            if (editor.document.uri.toString() === uri) applyRunningDecorationsToEditor(editor, visible);
+            if (editor.document.uri.toString() === uri) {
+                applyRunningDecorationsToEditor(editor, visible);
+                updateCompactTimingForEditor(editor);
+            }
         }
         visible = !visible;
     };
@@ -723,6 +751,60 @@ const runSequenceHandler = async (mode: 'below' | 'above' | 'all', args?: any) =
 
 
 
+/**
+ * Attach the timing label after the code on its existing text line: no extra
+ * notebook status row, changes to cell text, editor focus, or cell toolbar.
+ * This is an inline indicator, not a top-right overlay.
+ */
+function updateCompactTimingForEditor(editor: vscode.TextEditor) {
+    const config = vscode.workspace.getConfiguration('jupyterEnhancements');
+    if (editor.document.uri.scheme !== 'vscode-notebook-cell' ||
+        config.get<string>('executionTime.display', 'native') !== 'compact') {
+        editor.setDecorations(compactExecutionTimingDec, []);
+        return;
+    }
+
+    const notebookEditor = vscode.window.activeNotebookEditor;
+    // Find the exact notebook cell; never decorate a similarly named Python file.
+    const cell = notebookEditor?.notebook.getCells().find(
+        item => item.document.uri.toString() === editor.document.uri.toString()
+    );
+    if (!cell || cell.kind !== vscode.NotebookCellKind.Code ||
+        !cell.document.getText().trim()) {
+        editor.setDecorations(compactExecutionTimingDec, []);
+        return;
+    }
+
+    const uri = cell.document.uri.toString();
+    const debug = debugVisualForCell(uri);
+    const phase = debug?.phase === 'paused' ? 'paused' :
+        currentlyAnimatingUris.has(uri) ? 'running' : 'finished';
+    const info = compactTiming(snapshot(cell), phase, Date.now());
+    if (!info) {
+        editor.setDecorations(compactExecutionTimingDec, []);
+        return;
+    }
+
+    const line = [...Array(editor.document.lineCount).keys()].find(
+        index => editor.document.lineAt(index).text.trim().length > 0
+    );
+    if (line === undefined) {
+        editor.setDecorations(compactExecutionTimingDec, []);
+        return;
+    }
+    const textLine = editor.document.lineAt(line);
+    const last = textLine.range.end.character;
+    // DecorationOptions require a nonempty range. Place the after-attachment
+    // immediately after its last character, with a small separating margin.
+    if (last === 0) return;
+    const range = new vscode.Range(line, last - 1, line, last);
+    editor.setDecorations(compactExecutionTimingDec, [{
+        range,
+        hoverMessage: new vscode.MarkdownString(info.tooltip),
+        renderOptions: { after: { contentText: '  ' + info.text } }
+    }]);
+}
+
 function restoreDecorationForEditor(editor: vscode.TextEditor) {
     if (editor.document.uri.scheme !== 'vscode-notebook-cell') return;
 
@@ -739,6 +821,7 @@ function restoreDecorationForEditor(editor: vscode.TextEditor) {
     editor.setDecorations(cellSuccessDec, []);
     editor.setDecorations(debugPausedDec, []);
     editor.setDecorations(debugPausedLineDec, []);
+    updateCompactTimingForEditor(editor);
 
     const debugVisual = debugVisualForCell(uri);
     if (debugVisual?.phase === 'paused') {
@@ -848,6 +931,15 @@ function reloadDecorations() {
         isWholeLine: true
     });
 
+    compactExecutionTimingDec = vscode.window.createTextEditorDecorationType({
+        after: {
+            color: new vscode.ThemeColor('editorCodeLens.foreground'),
+            fontStyle: 'italic',
+            margin: '0 0 0 8px'
+        },
+        rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+    });
+
     scratchpadDec = vscode.window.createTextEditorDecorationType({
         borderStyle: config.get('scratchpad.borderStyle', 'dashed'),
         borderWidth: `${config.get('scratchpad.borderWidth', '0.5px')} 0px ${config.get('scratchpad.borderWidth', '0.5px')} 6px`,
@@ -858,7 +950,7 @@ function reloadDecorations() {
 }
 
 function disposeAllDecorations() {
-    [successBgDec, errorBgDec, flashDec, cmdRunningDec, cmdSuccessDec, cellRunningDec, cellSuccessDec, scratchpadDec, debugPausedDec, debugPausedLineDec]
+    [successBgDec, errorBgDec, flashDec, cmdRunningDec, cmdSuccessDec, cellRunningDec, cellSuccessDec, scratchpadDec, debugPausedDec, debugPausedLineDec, compactExecutionTimingDec]
         .forEach(d => d?.dispose());
 }
 
