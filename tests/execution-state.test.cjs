@@ -18,8 +18,15 @@ test('second completion updates the result', () => {
 test('unchanged summaries do not trigger phantom animations', () => {
   assert.equal(transition(state(2, 300, 400, true), state(2, 300, 400, true)), 'none');
 });
-test('order-only change can indicate execution start', () => {
-  assert.equal(transition(state(2, 100, 200, true), state(3, 100, 200, true)), 'started');
+test('widget-triggered order-only changes must not start a phantom animation', () => {
+  assert.equal(transition(state(2, 100, 200, true), state(3, 100, 200, true)), 'none');
+  assert.equal(transition(state(2, 100, 200, true), state(3, 100, 200, undefined)), 'none');
+  assert.equal(transition(state(2, 100, 200, true), state(3, 100, 0, undefined)), 'none');
+});
+
+test('normal new cell execution still starts after a new start timestamp', () => {
+  assert.equal(transition(state(2, 100, 200, true), state(3, 300, 200, true)), 'started');
+  assert.equal(transition(state(2, 100, 200, true), state(2, 300, 200, undefined)), 'started');
 });
 test('success with no timestamp can finish a newly identified run', () => {
   assert.equal(transition(state(1, 200, 0), state(2, 200, 0, true)), 'finished');
